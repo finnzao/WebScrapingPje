@@ -35,11 +35,11 @@ class PjeConsultaAutomator:
     load_dotenv()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
 
-    def __init__(self):
-        self.driver = webdriver.Chrome()
+    def __init__(self, driver: webdriver.Chrome = None):
+        self.driver = driver or webdriver.Chrome()  
         self.wait = WebDriverWait(self.driver, 20)
 
-    def login(self, user, password):
+    def login(self, user=user, password=password):
         login_url = 'https://pje.tjba.jus.br/pje/login.seam'
         self.driver.get(login_url)
         self.wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ssoFrame')))
