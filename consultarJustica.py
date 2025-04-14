@@ -152,6 +152,7 @@ class PjeGratuidadeConsulta:
                 })
                 continue
             final_url = self.build_url_with_task(process_id, task_id)
+            self.driver.get(final_url)
             print(f"Checking process {process_number} with task={task_id}...")
             result = self.consultar_gratuidade(session, final_url)
             results.append({

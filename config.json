@@ -13,6 +13,54 @@
         "dataAutuacaoAte": ""
     },
     "LoginInfo": {
-        "oc": ""
+        "oc": "",
+        "cookies": [
+            {
+                "domain": "pje.tjba.jus.br",
+                "httpOnly": true,
+                "name": "OAuth_Token_Request_State",
+                "path": "/",
+                "sameSite": "None",
+                "secure": true,
+                "value": "de36bc7a-7961-4788-8683-cd0035bb50de"
+            },
+            {
+                "domain": "pje.tjba.jus.br",
+                "httpOnly": false,
+                "name": "PJE-TJBA-1G-StickySessionRule",
+                "path": "/pje",
+                "sameSite": "Lax",
+                "secure": false,
+                "value": "pje1gapp073:pje-tjba-1g"
+            },
+            {
+                "domain": "pje.tjba.jus.br",
+                "httpOnly": false,
+                "name": "JSESSIONID",
+                "path": "/pje",
+                "sameSite": "None",
+                "secure": true,
+                "value": "x2freu4felxSlwTKgLZM8ijQVW8p5Bq5cbxXcOtb.pje1gapp073"
+            },
+            {
+                "domain": "pje.tjba.jus.br",
+                "httpOnly": false,
+                "name": "KEYCLOAK_IDENTITY",
+                "path": "/pje",
+                "sameSite": "Lax",
+                "secure": false,
+                "value": "eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICI1dnJEZ1hCS21FLTdFb3J2a0U1TXU5VmxJZF9JU2dsMnY3QWYyM25EdkRVIn0.eyJleHAiOjE3NDQyMzM4OTksImlhdCI6MTc0NDIwNTA5OSwiYXV0aF90aW1lIjoxNzQ0MjA1MDkzLCJqdGkiOiI2YmVmZWEwOC0xZWYwLTQwYTctODliOC1mYTRmNmVlNDFmYzYiLCJpc3MiOiJodHRwczovL3Nzby5jbG91ZC5wamUuanVzLmJyL2F1dGgvcmVhbG1zL3BqZSIsImF1ZCI6InBqZS10amJhLTFnIiwic3ViIjoiZWUzMGJhZmItZDM2Ny00NDEyLTkwOTItMzJmNTExYmM4N2JjIiwidHlwIjoiSUQiLCJhenAiOiJwamUtdGpiYS0xZyIsInNlc3Npb25fc3RhdGUiOiI1ODNkZGJiMS04ZDJjLTQ0NzctOTVmMS1mZGY4ODQ1NDUwMzYiLCJhdF9oYXNoIjoiMm03dGJIcjVFczVvTlJTeHdMRTV3ZyIsImFjciI6IjAiLCJzaWQiOiI1ODNkZGJiMS04ZDJjLTQ0NzctOTVmMS1mZGY4ODQ1NDUwMzYiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwibG9naW5Db21DZXJ0aWZpY2FkbyI6ZmFsc2UsIm5hbWUiOiJMVUlaIEZFTElQRSBNT1JFSVJBIERPUyBTQU5UT1MiLCJKVFIiOiI4MDUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIwNDQ5NDMzMDU2NiIsImdpdmVuX25hbWUiOiJMVUlaIEZFTElQRSBNT1JFSVJBIERPUyBTQU5UT1MiLCJlbWFpbCI6ImxmbWRzYW50b3NAdGpiYS5qdXMuYnIifQ.I2CKlz9XqKzAsqSoXf1f7z165ZQO29cGWQ2ymkwEMxp4Bom___EDaGcm6oDZSQTkPsesHokzS3pQHeZo6xA_-3NXZ_OD1EJg8vTnJX6iGCkVwTbnrDedUJL_SbY7Fc8ryfcbhjNzP9sZdB_YtuByq4nPSntdtrUzpNXpR0uWb11YAhXqwLOISaE4XuIWqR2bbubIdbUaVflYNcwtpUv1GZQmnxcT92bwq5IZ9nMQp0gF6LXFrGXFS7v9MwxVPYCQP81rpM0X13urq_vwNDgb0Z3wpI1MYiRNujaxDcvyZuq3yO6YvZ6Wl-zmME1BEc13lha7P3FzxjrxrnBG-DRsHA"
+            },
+            {
+                "domain": "pje.tjba.jus.br",
+                "httpOnly": false,
+                "name": "MO",
+                "path": "/pje",
+                "sameSite": "None",
+                "secure": true,
+                "value": "P"
+            }
+        ],
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
     }
 }
