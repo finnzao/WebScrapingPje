@@ -13,3 +13,4 @@ sshCLi.pub
 config.json
 processos_com_erro.json
 config.json
+logs/*
