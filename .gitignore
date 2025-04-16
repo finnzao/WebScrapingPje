@@ -11,3 +11,5 @@ sshCLi.pub
 *.csv
 *.xlsx#
 config.json
+processos_com_erro.json
+config.json
