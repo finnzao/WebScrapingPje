@@ -309,11 +309,9 @@ def search_on_tag(search):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     original_handles = set(driver.window_handles)
     print(f"Handles originais das janelas: {original_handles}")
-    nav_tag()
+    click_element(xpath="/html/body/app-root/selector/div/div/div[1]/side-bar/nav/ul/li[5]/a")
     input_tag(search)
 
-def nav_tag():
-    click_element(xpath="/html/body/app-root/selector/div/div/div[1]/side-bar/nav/ul/li[5]/a")
 
 def get_process_list():
     """

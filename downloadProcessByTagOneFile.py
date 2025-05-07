@@ -429,12 +429,12 @@ def main():
     try:
         user, password = os.getenv("USER"), os.getenv("PASSWORD")
         login(user, password)
-        skip_token()
+        #skip_token()
         profile = os.getenv("PROFILE")
-        select_profile("VARA CRIMINAL DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
-        search_on_tag("Sentenciado")
-        process_numbers = downloadProcessOnTagSearch("Ofício")
-        download_requested_processes(process_numbers,etiqueta="Sentenciado")
+        select_profile(profile)
+        search_on_tag("Repetidos")
+        process_numbers = downloadProcessOnTagSearch("Petição Inicial")
+        download_requested_processes(process_numbers,etiqueta="Repetidos")
         time.sleep(10)
     finally:
         driver.quit()

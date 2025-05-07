@@ -226,8 +226,8 @@ def main():
 
     load_dotenv()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
-    profile = os.getenv("PROFILE")
-
+    #profile = os.getenv("PROFILE")
+    profile = "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor"
     bot = PjeConsultaAutomator()
     driver = bot.driver
     wait = bot.wait
@@ -239,7 +239,7 @@ def main():
     bot.select_profile(profile)
 
     search_process(optionSearch)
-    time.sleep(20)
+    time.sleep(40)
 
     process_data = collect_process_date()
     bot.close()
