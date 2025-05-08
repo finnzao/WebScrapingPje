@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Automação PJe – download em massa de documentos
 -----------------------------------------------
@@ -9,7 +7,7 @@ Automação PJe – download em massa de documentos
   e download de cada documento correspondente
 """
 
-import os, re, time, json
+import os, re, time, json,unicodedata
 from functools import wraps
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -18,7 +16,7 @@ from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import (
     TimeoutException, StaleElementReferenceException,
-    ElementClickInterceptedException, NoSuchElementException,
+    ElementClickInterceptedException, NoSuchElementException,NoAlertPresentException
 )
 
 # ----------------------------------------------------------------------
@@ -176,7 +174,46 @@ def click_element(
     raise NoSuchElementException(msg)
 
 
-def switch_to_new_window(original_handles, timeout=20):
+def confirmar_popup_download(timeout_alert=5, timeout_modal=10) -> bool:
+    """
+    Tenta confirmar (aceitar) o pop‑up de download, seja ele
+    um alerta JS ou um modal HTML.  Retorna True se conseguiu.
+    """
+    # 1) JS alert / confirm
+    try:
+        WebDriverWait(driver, timeout_alert).until(EC.alert_is_present())
+        alert = driver.switch_to.alert
+        alert.accept()
+        print("[OK] Alerta JavaScript aceito")
+        return True
+    except (TimeoutException, NoAlertPresentException):
+        pass   # não era JS, tenta modal HTML
+
+    # 2) Modal HTML
+    try:
+        # id/class variam bastante.  Ajuste o XPath se o TJBA mudar o layout
+        botoes_confirmar = [
+            "//button[contains(.,'Confirmar')]",
+            "//button[contains(.,'OK')]",
+            "//button[contains(@class,'btn-primary')]"
+        ]
+        for xp in botoes_confirmar:
+            try:
+                btn = WebDriverWait(driver, timeout_modal).until(
+                    EC.element_to_be_clickable((By.XPATH, xp)))
+                driver.execute_script("arguments[0].click();", btn)
+                print("[OK] Modal HTML confirmado")
+                return True
+            except TimeoutException:
+                continue
+    except ElementClickInterceptedException as e:
+        print(f"[WARN] Interceptado ao clicar no modal: {e}")
+
+    print("[INFO] Nenhum pop‑up de confirmação encontrado")
+    return False
+
+
+def switch_to_new_window(original_handles, timeout=10):
     """
     Alterna para a nova janela que foi aberta após a execução de uma ação.
     """
@@ -219,69 +256,71 @@ def input_tag(search_text):
     print(f"Pesquisa realizada com o texto: {search_text}")
     click_element(xpath="/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[2]/ul/p-datalist/div/div/ul/li/div/li/div[2]/span/span")
 
+def _norm(txt: str) -> str:
+    """minúsculas + sem acento + espaços comprimidos"""
+    txt = unicodedata.normalize("NFD", txt)
+    txt = "".join(ch for ch in txt if unicodedata.category(ch) != "Mn")
+    return " ".join(txt.lower().split())
 
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, ElementClickInterceptedException
+
+
+
 
 @retry(max_retries=2)
-def baixar_documentos_timeline(busca: str,
-                               frame_id: str = "timelineFrame",
-                               xpath_campo: str = '//*[@id="divTimeLine:txtPesquisa"]',
-                               xpath_botao: str = '//*[@id="divTimeLine:btnPesquisar"]',
-                               xpath_container_links: str = '//*[@id="divTimeLine:eventosTimeLineElement"]/div[4]/div[2]',
-                               xpath_botao_download: str = '//*[@id="detalheDocumento:downloadPJeDocs"]') -> int:
+def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
+                                         filtro_titulo: str = "peticao inicial",
+                                         frame_id: str = "timelineFrame",
+                                         id_campo: str = "divTimeLine:txtPesquisa",
+                                         xpath_botao: str = '//*[@id="divTimeLine:btnPesquisar"]',
+                                         xpath_container: str = '//*[@id="divTimeLine:eventosTimeLineElement"]/div[4]/div[2]',
+                                         id_container: str = 'divTimeLine:eventosTimeLineElement',
+                                         xpath_download: str = '//*[@id="detalheDocumento:downloadPJeDocs"]'
+                                         ) -> int:
     """
-    Faz uma pesquisa na timeline e baixa todos os documentos retornados.
-    
-    Parâmetros
-    ----------
-    busca : str
-        Termo a ser digitado no campo de pesquisa da timeline.
-    frame_id : str
-        ID do iframe da timeline (padrão 'timelineFrame').
-    Demais parâmetros
-        XPaths dos elementos essenciais, expostos para fácil ajuste se o TJBA alterar a página.
-    
-    Retorno
-    -------
-    int
-        Quantidade de documentos baixados.
+    1. Digita <busca_pesquisa> no campo de timeline e clica em Pesquisar.
+    2. Filtra os links cujo texto contenha <filtro_titulo>.
+    3. Clica em cada um desses links e baixa o PDF.
+    Retorna o total de arquivos baixados.
     """
     baixados = 0
+    alvo_norm = _norm(filtro_titulo)
 
-    # 1. Entrar no frame da timeline
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, frame_id)))
+    # --- entrar no iframe da timeline ---
+    #driver.switch_to.default_content()
+    #wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, frame_id)))
 
-    # 2. Preencher campo de pesquisa e acionar busca
-    campo = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_campo)))
+    # --- pesquisa ---
+    campo = wait.until(EC.element_to_be_clickable((By.ID, id_campo)))
     campo.clear()
-    campo.send_keys(busca)
+    campo.send_keys(busca_pesquisa)
     wait.until(EC.element_to_be_clickable((By.XPATH, xpath_botao))).click()
+    time.sleep(2)
 
-    # 3. Aguardar lista de links (<a>) e coletá‑los
-    container = wait.until(EC.presence_of_element_located((By.XPATH, xpath_container_links)))
-    links = container.find_elements(By.TAG_NAME, "a")
-    print(f"[TL] {len(links)} link(s) encontrados para '{busca}'")
+    # --- coletar links ---
+    container = wait.until(EC.presence_of_element_located((By.ID, id_container)))
+    todos_links = container.find_elements(By.TAG_NAME, "a")
+    links_filtrados = [a for a in todos_links if alvo_norm in _norm(a.text)]
 
-    # 4. Percorrer links na ordem, clicando e baixando
-    for idx, link in enumerate(links, 1):
+    print(f"[TL] {len(todos_links)} link(s) totais  •  {len(links_filtrados)} após filtro '{filtro_titulo}'")
+
+    # --- download apenas dos links filtrados ---
+    for idx, link in enumerate(links_filtrados, 1):
         try:
             driver.execute_script("arguments[0].scrollIntoView(true);", link)
             driver.execute_script("arguments[0].click();", link)
 
-            # Botão de download dentro do detalhe do documento
-            botao_dl = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_botao_download)))
-            driver.execute_script("arguments[0].click();", botao_dl)
-            baixados += 1
-            print(f"    └─ Documento {idx} baixado com sucesso")
-            time.sleep(2)  # pequena pausa para não sobrecarregar o servidor
-        except (TimeoutException, ElementClickInterceptedException) as e:
-            print(f"    └─ Falha ao baixar o documento {idx}: {e}")
-            save_screenshot(f"falha_doc_timeline_{idx}")
+            btn_dl = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_download)))
+            driver.execute_script("arguments[0].click();", btn_dl)
 
-    # 5. Voltar ao conteúdo principal para a chamada que invocou esta função
+            confirmar_popup_download()        # se houver confirmação
+            baixados += 1
+            print(f"   └─ ({idx}) download OK — {link.text.strip()}")
+            time.sleep(2)
+        except (TimeoutException, ElementClickInterceptedException) as e:
+            print(f"   └─ ({idx}) falhou: {e}")
+            save_screenshot(f"falha_timeline_{idx}")
+
     driver.switch_to.default_content()
     return baixados
 
@@ -355,11 +394,19 @@ def processos_em_lista() -> list:
             process_number = raw_process_number
         print(f"Número do processo: {process_number}")
         process_numbers.append(process_number)
+        #Dentro do processo
         click_on_process(process_element)
         driver.switch_to.default_content()
         print("Saiu do frame 'ngFrame'.")
         
-        baixar_documentos_timeline(busca="Petição inicial")
+        baixar_documentos_timeline_filtrando(busca_pesquisa="Petição inicial",filtro_titulo="petição inicial")
+        time.sleep(1)
+        driver.close()
+        print("Janela atual fechada com sucesso.")
+        driver.switch_to.window(original_window)
+        print("Retornado para a janela original.")
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        print("Alternado para o frame 'ngFrame'.")
 
 def abrir_processo(card):
     original = driver.current_window_handle
