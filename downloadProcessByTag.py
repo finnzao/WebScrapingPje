@@ -165,14 +165,13 @@ def save_exception_screenshot(filename):
 def click_element(
     xpath: str = None,
     element_id: str = None,
-    css_selector: str = None
+    css_selector: str = None,
+    js_path: str = None
 ) -> None:
-
-    if not xpath and not element_id and not css_selector:
-        raise ValueError("Informe ao menos um seletor: xpath, element_id ou css_selector.")
+    if not xpath and not element_id and not css_selector and not js_path:
+        raise ValueError("Informe ao menos um seletor: xpath, element_id, css_selector ou js_path.")
 
     def _try_click(by: By, selector: str, desc: str) -> bool:
-        """Espera o elemento ficar clicável e tenta clique normal + JavaScript."""
         try:
             print(f"[click_element] Tentando clicar via {desc}: {selector}")
             element = wait.until(EC.element_to_be_clickable((by, selector)))
@@ -190,43 +189,38 @@ def click_element(
             print(f"Falha ao tentar clicar via {desc}: {ex}")
             return False
 
-    # 1) Se xpath foi fornecido, tenta
-    if xpath:
-        if _try_click(By.XPATH, xpath, "XPATH"):
-            return
+    if xpath and _try_click(By.XPATH, xpath, "XPATH"):
+        return
 
-    # 2) Se ID foi fornecido, tenta
-    if element_id:
-        if _try_click(By.ID, element_id, "ID"):
-            return
+    if element_id and _try_click(By.ID, element_id, "ID"):
+        return
 
-    # 3) Se css_selector foi fornecido, tenta JavaScript com querySelector
-    if css_selector:
+    if css_selector and _try_click(By.CSS_SELECTOR, css_selector, "CSS SELECTOR"):
+        return
+
+    if js_path:
         try:
-            print(f"[click_element] Tentando CSS SELECTOR (JS) via: {css_selector}")
-            # Se quiser esperar ficar 'clicável' pela API do Selenium:
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector)))
-            # Agora clique usando o querySelector
+            print(f"[click_element] Tentando clicar via JS PATH: {js_path}")
             js_code = f"""
-                const el = document.querySelector('{css_selector}');
-                if(el) {{
+                const el = document.querySelector("{js_path}");
+                if (el) {{
                     el.scrollIntoView();
                     el.click();
                 }} else {{
-                    throw new Error("Elemento não encontrado via querySelector('{css_selector}')");
+                    throw new Error("Elemento não encontrado via JS PATH: {js_path}");
                 }}
             """
             driver.execute_script(js_code)
-            print(f"Elemento clicado com sucesso (CSS SELECTOR + JS): {css_selector}")
+            print(f"Elemento clicado com sucesso (JS PATH): {js_path}")
             return
         except Exception as ex:
-            print(f"Falha ao tentar clicar via CSS SELECTOR + JS: {ex}")
+            print(f"Falha ao tentar clicar via JS PATH: {ex}")
 
-    # Se chegou aqui, falhou em tudo
+    # Se falhou em todos os métodos
     save_exception_screenshot("click_element_exception.png")
     msg = (
-        "Não foi possível clicar no elemento usando XPATH='{xpath}', ID='{element_id}' ou "
-        f"CSS SELECTOR='{css_selector}'."
+        f"Não foi possível clicar no elemento usando XPATH='{xpath}', "
+        f"ID='{element_id}', CSS SELECTOR='{css_selector}', ou JS PATH='{js_path}'."
     )
     print(msg)
     raise NoSuchElementException(msg)
@@ -471,9 +465,8 @@ def downloadProcessOnTagSearch(typeDocument):
             print("Saiu do frame 'ngFrame'.")
 
             # Acessa aba de documentos
-            click_element(xpath='//*[@id="navbar:ajaxPanelAlerts"]/ul[2]/li[5]/a')
-            time.sleep(2)
-
+            click_element(css_selector='a.btn-menu-abas.dropdown-toggle')
+            time.sleep(1)
             try:
                 tipo_documento_foi_selecionado = select_tipo_documento_por_nome(typeDocument)
                 if tipo_documento_foi_selecionado:
@@ -608,9 +601,9 @@ def main():
     automator = iniciar_automacao()
     try:
         # Exemplo de uso
-        search_on_tag("Repetidos")
-        processos_encontrados = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
-        download_requested_processes(processos_encontrados, etiqueta="Repetidos")
+        search_on_tag("meta 10")
+        processos_encontrados = downloadProcessOnTagSearch(typeDocument="Denúncia")
+        download_requested_processes(processos_encontrados, etiqueta="meta 10")
         time.sleep(5)
         
     finally:
