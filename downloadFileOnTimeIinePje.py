@@ -365,25 +365,36 @@ def open_tag_page(tag: str):
     click_element(xpath="/html/body/app-root/selector/div/div/div[1]/side-bar/nav/ul/li[5]/a")
     input_tag(tag)
 
-def processos_em_lista() -> list:
+def processos_em_lista() -> tuple[list, list]:
+    """
+    Percorre a lista de processos exibida após filtrar por etiqueta.
+    Retorna:
+      - lista de elementos-card (para possível uso posterior)
+      - lista de números de processo formatados
+    """
     error_processes = []
     process_numbers = []
+    cards = []
     original_window = driver.current_window_handle
 
     driver.switch_to.default_content()
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     print("Dentro do frame 'ngFrame'.")
 
-    total_processes = len(get_process_list())
+    processos = get_process_list()
+    total_processes = len(processos)
+
     for index in range(1, total_processes + 1):
         raw_process_number = "NÃO IDENTIFICADO"
-      
+
         print(f"\nIniciando o download para o processo {index} de {total_processes}")
         process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
         process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+        cards.append(process_element)
+
         raw_process_number = process_element.text.strip()
-        # Ajuste do número do processo no formato XXXXXX-XX.XXXX.X.XX.XXXX
         just_digits = re.sub(r'\D', '', raw_process_number)
+
         if len(just_digits) >= 17:
             process_number = (
                 f"{just_digits[:7]}-{just_digits[7:9]}."
@@ -392,14 +403,19 @@ def processos_em_lista() -> list:
             )
         else:
             process_number = raw_process_number
+
         print(f"Número do processo: {process_number}")
         process_numbers.append(process_number)
-        #Dentro do processo
+
+        # Dentro do processo
         click_on_process(process_element)
         driver.switch_to.default_content()
         print("Saiu do frame 'ngFrame'.")
-        
-        baixar_documentos_timeline_filtrando(busca_pesquisa="Petição inicial",filtro_titulo="petição inicial")
+
+        baixar_documentos_timeline_filtrando(
+            busca_pesquisa="Petição inicial",
+            filtro_titulo="petição inicial"
+        )
         time.sleep(1)
         driver.close()
         print("Janela atual fechada com sucesso.")
@@ -407,6 +423,9 @@ def processos_em_lista() -> list:
         print("Retornado para a janela original.")
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
         print("Alternado para o frame 'ngFrame'.")
+
+    driver.switch_to.default_content()
+    return cards, process_numbers
 
 def abrir_processo(card):
     original = driver.current_window_handle
@@ -515,9 +534,9 @@ def main():
     load_dotenv()
     initialize_driver()
     try:
-        login(os.getenv("USER"), os.getenv("PASSWORD"))
+        login("02535381575", "@tjbam1guel")
         select_profile(os.getenv("PROFILE"))
-        open_tag_page("Repetidos")
+        open_tag_page("meta 10")
         cards = processos_em_lista()
         numeros = []
         for card in cards:
@@ -527,8 +546,8 @@ def main():
             numeros.append(num)
         resultados = downloadRequestedFileOnProcesses(
             process_numbers=numeros,
-            etiqueta="Repetidos",
-            search_term="Petição Inicial"
+            etiqueta="repetidos temporario",
+            search_term="Petição"
         )
         print(json.dumps(resultados, indent=2, ensure_ascii=False))
         time.sleep(5)
