@@ -57,6 +57,7 @@ DocumentoNome = Literal[
     "Substabelecimento",
     "TERMO DE AUDIÊNCIA",
     "Voto",
+    "Selecione"
 ]
 
 TIPO_DOCUMENTOS: Dict[DocumentoNome, str] = {
@@ -92,6 +93,7 @@ TIPO_DOCUMENTOS: Dict[DocumentoNome, str] = {
     "Substabelecimento": "51",
     "TERMO DE AUDIÊNCIA": "150",
     "Voto": "72",
+    "Selecione":"0"
 }
 
 
@@ -551,11 +553,11 @@ def download_requested_processes(process_numbers, etiqueta):
             if (process_number in process_numbers
                     and process_number not in downloaded_process_numbers):
                 print(f"Processo {process_number} encontrado e ainda não baixado. Iniciando download...")
+                downloaded_process_numbers.add(process_number)
+                resultados["ProcessosBaixados"].append(process_number)
                 download_button = row.find_element(By.XPATH, "./td[last()]//button")
                 driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
                 download_button.click()
-                downloaded_process_numbers.add(process_number)
-                resultados["ProcessosBaixados"].append(process_number)
                 time.sleep(5)
 
         # Identificar processos que não foram encontrados na lista de downloads
@@ -599,7 +601,7 @@ def iniciar_automacao():
     # Chamamos as funções do pje_automation
     automator.login(user, password)
     # automator.skip_token()
-    automator.select_profile(profile="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
+    automator.select_profile(profile="VARA CRIMINAL DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
 
     print("Automação inicializada com sucesso!")
     return automator
@@ -608,9 +610,9 @@ def main():
     automator = iniciar_automacao()
     try:
         # Exemplo de uso
-        search_on_tag("Repetidos")
-        processos_encontrados = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
-        download_requested_processes(processos_encontrados, etiqueta="Repetidos")
+        search_on_tag("teste")
+        processos_encontrados = downloadProcessOnTagSearch(typeDocument="Selecione")
+        download_requested_processes(processos_encontrados, etiqueta="saneamento")
         time.sleep(5)
         
     finally:

@@ -1,0 +1,34 @@
+curl ^"https://pje.tjba.jus.br/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam^" ^
+  -X POST ^
+  -H ^"User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0^" ^
+  -H ^"Accept: */*^" ^
+  -H ^"Accept-Language: pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3^" ^
+  -H ^"Accept-Encoding: gzip, deflate, br, zstd^" ^
+  -H ^"Content-Type: application/x-www-form-urlencoded; charset=UTF-8^" ^
+  -H ^"Origin: https://pje.tjba.jus.br^" ^
+  -H ^"Connection: keep-alive^" ^
+  -H ^"Referer: https://pje.tjba.jus.br/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam^" ^
+  -H ^"Cookie: JSESSIONID=gnPSmpEeFOjaxUHpXwyldHAlD0ixxNBL0olQQFDh.pje1gapp080; MO=P; KEYCLOAK_IDENTITY=eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICI1dnJEZ1hCS21FLTdFb3J2a0U1TXU5VmxJZF9JU2dsMnY3QWYyM25EdkRVIn0.eyJleHAiOjE3NDg5ODQ4MDUsImlhdCI6MTc0ODk1NjAwNiwiYXV0aF90aW1lIjoxNzQ4OTU2MDA1LCJqdGkiOiI4NTRhMTA4Mi1lZWE5LTQzMjMtOTNmMC04YWM1NzBjZWM5MDIiLCJpc3MiOiJodHRwczovL3Nzby5jbG91ZC5wamUuanVzLmJyL2F1dGgvcmVhbG1zL3BqZSIsImF1ZCI6InBqZS10amJhLTFnIiwic3ViIjoiZWUzMGJhZmItZDM2Ny00NDEyLTkwOTItMzJmNTExYmM4N2JjIiwidHlwIjoiSUQiLCJhenAiOiJwamUtdGpiYS0xZyIsInNlc3Npb25fc3RhdGUiOiI0NTVlMzg4Ny04YmViLTQwMzktYTRkYS05MjU4MTdkYjQ4NzMiLCJhdF9oYXNoIjoiRXlIWjZNV0ZpaDJsT3VoRjV4NXNGQSIsImFjciI6IjEiLCJzaWQiOiI0NTVlMzg4Ny04YmViLTQwMzktYTRkYS05MjU4MTdkYjQ4NzMiLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwibG9naW5Db21DZXJ0aWZpY2FkbyI6ZmFsc2UsIm5hbWUiOiJMVUlaIEZFTElQRSBNT1JFSVJBIERPUyBTQU5UT1MiLCJKVFIiOiI4MDUiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiIwNDQ5NDMzMDU2NiIsImdpdmVuX25hbWUiOiJMVUlaIEZFTElQRSBNT1JFSVJBIERPUyBTQU5UT1MiLCJlbWFpbCI6ImxmbWRzYW50b3NAdGpiYS5qdXMuYnIifQ.wRa0q5tJGOLbSP1cI_DoxGzSM6kD3cZMuiEOgmldl6QFv8ZGR4fRKc5tGahIX2eCZuYUrcakW03w6okZSsH2A52CJrX7M5zxujdhOdbFLH8rcCm_ZQr9eTZEmf80LxvOBhcjW6W87ltFcmAHlLKOh4B-zjieQbO6hbNbcRNreOfn90i62MMorWMxBkNXqmeQEBoU3XzhxgmeF5rsyQqvXvPtfIj8NU5eAU9c4WPc7tH9JMquqimqFMAjbXtC09orn9nz_V0Avz4pdrwElgrOKGyVxtWn9yUKbA8opYMlbHHk-zBZJF7-4_Nybh0BGCInbKvu1h7s-YD_FlpCCFFLQw; PJE-TJBA-1G-StickySessionRule=pje1gapp080:pje-tjba-1g; _ga=GA1.3.118152911.1748873199; _ga_PSN9EXM0YE=GS2.1.s1748878856\$o2\$g0\$t1748878856\$j60\$l0\$h0; _gid=GA1.3.1701989587.1748873200; OAuth_Token_Request_State=041dffd3-9f78-4755-9edc-53d4e40d1fa8; _ga_PSN9EXM0YE=GS2.1.s1748878856\$o2\$g0\$t1748878856\$j60\$l0\$h0; _ga=GA1.3.118152911.1748873199; _gid=GA1.3.1701989587.1748873200^" ^
+  -H ^"Sec-Fetch-Dest: empty^" ^
+  -H ^"Sec-Fetch-Mode: cors^" ^
+  -H ^"Sec-Fetch-Site: same-origin^" ^
+  -H ^"Priority: u=0^" ^
+  --data-raw ^"AJAXREQUEST=_viewRoot&divTimeLine^%^3AtxtPesquisa=&divTimeLine^%^3AchkExibirDocumentos=on&divTimeLine^%^3AchkExibirMovimentos=on&divTimeLine^%^3AmodalLembretesOpenedState=&divTimeLine=divTimeLine&autoScroll=&javax.faces.ViewState=j_id7&divTimeLine^%^3Aj_id394^%^3A4^%^3Aj_id396^%^3A0^%^3Aj_id407=divTimeLine^%^3Aj_id394^%^3A4^%^3Aj_id396^%^3A0^%^3Aj_id407&ajaxSingle=divTimeLine^%^3Aj_id394^%^3A4^%^3Aj_id396^%^3A0^%^3Aj_id407&AJAX^%^3AEVENTS_COUNT=1&^"
+
+
+  await fetch("https://pje.tjba.jus.br/pje/downloadBinario.seam", {
+    "credentials": "include",
+    "headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:139.0) Gecko/20100101 Firefox/139.0",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "pt-BR,pt;q=0.8,en-US;q=0.5,en;q=0.3",
+        "Upgrade-Insecure-Requests": "1",
+        "Sec-Fetch-Dest": "iframe",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "same-origin",
+        "Priority": "u=4"
+    },
+    "referrer": "https://pje.tjba.jus.br/pje/Processo/ConsultaProcesso/Detalhe/listAutosDigitais.seam",
+    "method": "GET",
+    "mode": "cors"
+});
