@@ -15,3 +15,4 @@ processos_com_erro.json
 config.json
 .logs/*
 logs/*
+documentos_capturados/*

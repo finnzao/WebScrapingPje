@@ -408,26 +408,62 @@ def wait_for_download_screen(timeout=30):
     )
     print("Tela de carregamento sumiu. Download presumidamente concluído.")
 
-def click_download_button_and_wait(typeDocument: DocumentoNome, process_number: str) -> None:
+def check_for_area_download_message():
+    """
+    Verifica se apareceu a mensagem de que o arquivo foi enviado para a área de download.
+    Retorna True se a mensagem foi encontrada, False caso contrário.
+    """
+    try:
+        # Verifica se existe o painel de alerta de download
+        alert_panel = driver.find_element(By.ID, "panelAlertDownloadMessagesContentTable")
+        
+        # Verifica se a mensagem específica está presente
+        message_xpath = "//span[contains(text(), 'será disponibilizado no menu principal em: Download')]"
+        WebDriverWait(driver, 3).until(
+            EC.presence_of_element_located((By.XPATH, message_xpath))
+        )
+        print("Mensagem de área de download detectada - arquivo grande será processado em segundo plano")
+        return True
+    except (NoSuchElementException, TimeoutException):
+        return False
+
+def click_download_button_and_wait(typeDocument: DocumentoNome, process_number: str) -> str:
     """
     1) Seleciona o tipo de documento;
     2) Clica no botão de download;
-    3) Aguarda a tela de carregamento sumir,
-       indicando que o download terminou.
-    4) Caso o tipo de documento não exista, dispara NoSuchElementException.
+    3) Verifica se o download foi direto ou foi para área de download
+    4) Retorna o status do download: 'direto', 'area_download', 'erro' ou 'sem_documento'
     """
     try:
-        select_tipo_documento_por_nome(typeDocument)
+        if not select_tipo_documento_por_nome(typeDocument):
+            print(f"O processo {process_number} não possui o tipo de documento '{typeDocument}'.")
+            return 'sem_documento'
+        
         time.sleep(1)
 
-        # Aqui chamamos a função de clique. Ajuste se quiser ID, CSS etc.
-        click_element(xpath="/html/body/div/div[1]/div/form/span/ul[2]/li[5]/div/div[5]/input")
-        print(f"Botão de download clicado com sucesso para '{typeDocument}'.")
-
-        # Aguarda a tela de carregamento de download sumir
-        wait_for_download_screen()
-    except NoSuchElementException:
-        print(f"O processo {process_number} não possui o tipo de documento '{typeDocument}'. Pulando download...")
+        # Tenta clicar no botão de download
+        try:
+            click_element(css_selector="div#navbar\\:botoesDownload input[value='Download']")
+            print(f"Botão de download clicado para '{typeDocument}'.")
+            
+            # Aguarda um pouco para verificar o tipo de resposta
+            time.sleep(3)
+            
+            # Verifica se apareceu a mensagem de área de download
+            if check_for_area_download_message():
+                return 'area_download'
+            else:
+                # Se não apareceu a mensagem, assume que foi download direto
+                print(f"Download direto realizado para o processo {process_number}")
+                return 'direto'
+                
+        except Exception as e:
+            print(f"Erro ao clicar no botão de download: {e}")
+            return 'erro'
+            
+    except Exception as e:
+        print(f"Erro inesperado no processo de download: {e}")
+        return 'erro'
 
 @retry()
 def skip_token():
@@ -437,8 +473,23 @@ def skip_token():
     proceed_button.click()
     
 def downloadProcessOnTagSearch(typeDocument):
-    error_processes = []
-    process_numbers = []
+    """
+    Realiza o download dos documentos e retorna um relatório detalhado
+    """
+    relatorio_detalhado = {
+        "tipoDocumento": typeDocument,
+        "dataHoraInicio": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "processosAnalisados": [],
+        "resumo": {
+            "totalProcessos": 0,
+            "downloadsDiretos": 0,
+            "enviadosAreaDownload": 0,
+            "semDocumento": 0,
+            "erros": 0
+        }
+    }
+    
+    process_numbers_area_download = []  # Processos que foram para área de download
     original_window = driver.current_window_handle
 
     driver.switch_to.default_content()
@@ -446,15 +497,23 @@ def downloadProcessOnTagSearch(typeDocument):
     print("Dentro do frame 'ngFrame'.")
 
     total_processes = len(get_process_list())
+    relatorio_detalhado["resumo"]["totalProcessos"] = total_processes
+    
     for index in range(1, total_processes + 1):
-        raw_process_number = "NÃO IDENTIFICADO"
+        info_processo = {
+            "numero": "NÃO IDENTIFICADO",
+            "statusDownload": "erro",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "observacoes": ""
+        }
+        
         try:
-            print(f"\nIniciando o download para o processo {index} de {total_processes}")
+            print(f"\nIniciando análise do processo {index} de {total_processes}")
             process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
             process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
             raw_process_number = process_element.text.strip()
 
-            # Ajuste do número do processo no formato XXXXXX-XX.XXXX.X.XX.XXXX
+            # Ajuste do número do processo
             just_digits = re.sub(r'\D', '', raw_process_number)
             if len(just_digits) >= 17:
                 process_number = (
@@ -465,8 +524,8 @@ def downloadProcessOnTagSearch(typeDocument):
             else:
                 process_number = raw_process_number
 
+            info_processo["numero"] = process_number
             print(f"Número do processo: {process_number}")
-            process_numbers.append(process_number)
 
             click_on_process(process_element)
             driver.switch_to.default_content()
@@ -476,25 +535,26 @@ def downloadProcessOnTagSearch(typeDocument):
             click_element(css_selector='a.btn-menu-abas.dropdown-toggle')
             time.sleep(2)
 
-            try:
-                tipo_documento_foi_selecionado = select_tipo_documento_por_nome(typeDocument)
-                if tipo_documento_foi_selecionado:
-                    try:
-                        click_element(css_selector="div#navbar\\:botoesDownload input[value='Download']")
-                        # wait_for_download_screen()
-                        time.sleep(5)
-                        print(f"Botão de download clicado com sucesso para '{typeDocument}'.")
-                    except Exception as e:
-                        print(f"O processo {process_number} não foi possível clicar no botão de download. Pulando download...")
-                        print(f"Erro: {e}")
-                else:
-                    print(f"O processo {process_number} não possui o tipo de documento '{typeDocument}'. Pulando download...")
-            except Exception as e:
-                print(f"Erro inesperado ao selecionar ou clicar no tipo de documento '{typeDocument}': {e}")
+            # Tenta realizar o download e captura o status
+            status_download = click_download_button_and_wait(typeDocument, process_number)
+            info_processo["statusDownload"] = status_download
+            
+            # Atualiza contadores do resumo
+            if status_download == 'direto':
+                relatorio_detalhado["resumo"]["downloadsDiretos"] += 1
+                info_processo["observacoes"] = "Download realizado diretamente"
+            elif status_download == 'area_download':
+                relatorio_detalhado["resumo"]["enviadosAreaDownload"] += 1
+                process_numbers_area_download.append(process_number)
+                info_processo["observacoes"] = "Arquivo grande - enviado para área de download"
+            elif status_download == 'sem_documento':
+                relatorio_detalhado["resumo"]["semDocumento"] += 1
+                info_processo["observacoes"] = f"Processo não possui documento do tipo '{typeDocument}'"
+            else:
+                relatorio_detalhado["resumo"]["erros"] += 1
+                info_processo["observacoes"] = "Erro durante tentativa de download"
 
-
-
-            # Fecha a janela do processo (com ou sem download) e retorna para a original
+            # Fecha a janela do processo e retorna
             driver.close()
             print("Janela atual fechada com sucesso.")
             driver.switch_to.window(original_window)
@@ -503,8 +563,11 @@ def downloadProcessOnTagSearch(typeDocument):
             print("Alternado para o frame 'ngFrame'.")
 
         except Exception as e:
-            print(f"Erro no processo {raw_process_number}: {e}")
-            error_processes.append(raw_process_number)
+            print(f"Erro no processo {info_processo['numero']}: {e}")
+            info_processo["statusDownload"] = "erro"
+            info_processo["observacoes"] = f"Erro: {str(e)}"
+            relatorio_detalhado["resumo"]["erros"] += 1
+            
             try:
                 if len(driver.window_handles) > 1:
                     driver.close()
@@ -512,75 +575,140 @@ def downloadProcessOnTagSearch(typeDocument):
                     driver.switch_to.window(original_window)
                     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
             except Exception as inner_e:
-                print(f"Erro ao fechar janela após erro no processo {raw_process_number}: {inner_e}")
-            continue
+                print(f"Erro ao fechar janela após erro: {inner_e}")
+        
+        finally:
+            relatorio_detalhado["processosAnalisados"].append(info_processo)
 
-    # Salva somente os processos que deram exceção inesperada
-    if error_processes:
-        with open("processos_com_erro.json", "w", encoding="utf-8") as f:
-            json.dump(error_processes, f, ensure_ascii=False, indent=4)
-        print("Processos com erro foram salvos em 'processos_com_erro.json'.")
+    relatorio_detalhado["dataHoraFim"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Salva relatório parcial
+    with open(".logs/relatorio_downloads_parcial.json", "w", encoding="utf-8") as f:
+        json.dump(relatorio_detalhado, f, ensure_ascii=False, indent=4)
+    
+    print("Processamento da primeira etapa concluído.")
+    return process_numbers_area_download, relatorio_detalhado
 
-    print("Processamento concluído.")
-    return process_numbers
-
-def download_requested_processes(process_numbers, etiqueta):
+def download_requested_processes(process_numbers_area_download, etiqueta, relatorio_parcial):
     """
-    Acessa a página de requisição de downloads e baixa os processos listados,
-    registrando em um arquivo JSON os processos baixados e os não encontrados.
+    Acessa a página de requisição de downloads e baixa apenas os processos que foram
+    enviados para a área de download, atualizando o relatório com o status final.
     """
-    resultados = {
+    resultados_finais = {
         "nomeEtiqueta": etiqueta,
-        "ProcessosBaixados": [],
-        "ProcessosNãoEncontrados": []
+        "tipoDocumento": relatorio_parcial["tipoDocumento"],
+        "dataHoraInicio": relatorio_parcial["dataHoraInicio"],
+        "dataHoraFinalizacao": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "processosDetalhados": relatorio_parcial["processosAnalisados"],
+        "areaDownload": {
+            "processosEsperados": len(process_numbers_area_download),
+            "processosBaixados": [],
+            "processosNaoEncontrados": [],
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        },
+        "resumoFinal": {
+            "totalProcessosAnalisados": relatorio_parcial["resumo"]["totalProcessos"],
+            "downloadsDiretos": relatorio_parcial["resumo"]["downloadsDiretos"],
+            "enviadosAreaDownload": relatorio_parcial["resumo"]["enviadosAreaDownload"],
+            "baixadosAreaDownload": 0,
+            "naoEncontradosAreaDownload": 0,
+            "semDocumento": relatorio_parcial["resumo"]["semDocumento"],
+            "erros": relatorio_parcial["resumo"]["erros"],
+            "sucessoTotal": 0
+        }
     }
 
+    if not process_numbers_area_download:
+        print("Nenhum processo foi enviado para área de download. Pulando esta etapa.")
+        resultados_finais["resumoFinal"]["sucessoTotal"] = resultados_finais["resumoFinal"]["downloadsDiretos"]
+        json_filename = f".logs/processos_download_{etiqueta}_completo.json"
+        with open(json_filename, "w", encoding="utf-8") as f:
+            json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
+        return resultados_finais
+
     try:
+        print(f"\nAcessando área de download para baixar {len(process_numbers_area_download)} processos...")
         driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
         print("Dentro do iframe 'ngFrame'.")
+        
         wait.until(EC.presence_of_element_located((By.TAG_NAME, 'table')))
         print("Tabela carregada.")
+        
         rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
         print(f"Número total de processos na lista de downloads: {len(rows)}")
+        
         downloaded_process_numbers = set()
 
         for row in rows:
             process_number_td = row.find_element(By.XPATH, "./td[1]")
             process_number = process_number_td.text.strip()
-            print(f"Verificando o processo: {process_number}")
+            
+            if process_number in process_numbers_area_download and process_number not in downloaded_process_numbers:
+                print(f"Processo {process_number} encontrado na área de download. Baixando...")
+                
+                try:
+                    download_button = row.find_element(By.XPATH, "./td[last()]//button")
+                    driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
+                    download_button.click()
+                    time.sleep(5)
+                    
+                    downloaded_process_numbers.add(process_number)
+                    resultados_finais["areaDownload"]["processosBaixados"].append(process_number)
+                    
+                    # Atualiza o status do processo no relatório detalhado
+                    for proc in resultados_finais["processosDetalhados"]:
+                        if proc["numero"] == process_number:
+                            proc["statusDownload"] = "baixado_area_download"
+                            proc["observacoes"] += " - Baixado com sucesso da área de download"
+                            proc["timestampAreaDownload"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            
+                except Exception as e:
+                    print(f"Erro ao baixar processo {process_number} da área de download: {e}")
 
-            if (process_number in process_numbers
-                    and process_number not in downloaded_process_numbers):
-                print(f"Processo {process_number} encontrado e ainda não baixado. Iniciando download...")
-                downloaded_process_numbers.add(process_number)
-                resultados["ProcessosBaixados"].append(process_number)
-                download_button = row.find_element(By.XPATH, "./td[last()]//button")
-                driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
-                download_button.click()
-                time.sleep(5)
-
-        # Identificar processos que não foram encontrados na lista de downloads
+        # Identificar processos que não foram encontrados
         processos_nao_encontrados = [
-            proc for proc in process_numbers
+            proc for proc in process_numbers_area_download
             if proc not in downloaded_process_numbers
         ]
-        resultados["ProcessosNãoEncontrados"].extend(processos_nao_encontrados)
+        
+        resultados_finais["areaDownload"]["processosNaoEncontrados"] = processos_nao_encontrados
+        
+        # Atualiza processos não encontrados no relatório detalhado
+        for proc_num in processos_nao_encontrados:
+            for proc in resultados_finais["processosDetalhados"]:
+                if proc["numero"] == proc_num:
+                    proc["statusDownload"] = "nao_encontrado_area_download"
+                    proc["observacoes"] += " - Não encontrado na área de download (ainda processando?)"
 
         driver.switch_to.default_content()
         print("Voltando para o conteúdo principal.")
 
     except Exception as e:
-        save_exception_screenshot("download_requested_processes_exception.png")
-        print(f"Erro em 'download_requested_processes'. Captura de tela salva. Erro: {e}")
+        save_exception_screenshot("download_area_exception.png")
+        print(f"Erro ao acessar área de download: {e}")
 
-    # Salvar os resultados no JSON
-    json_filename = f".logs\\processos_download_{etiqueta}.json"
+    # Atualiza resumo final
+    resultados_finais["resumoFinal"]["baixadosAreaDownload"] = len(
+        resultados_finais["areaDownload"]["processosBaixados"]
+    )
+    resultados_finais["resumoFinal"]["naoEncontradosAreaDownload"] = len(
+        resultados_finais["areaDownload"]["processosNaoEncontrados"]
+    )
+    resultados_finais["resumoFinal"]["sucessoTotal"] = (
+        resultados_finais["resumoFinal"]["downloadsDiretos"] + 
+        resultados_finais["resumoFinal"]["baixadosAreaDownload"]
+    )
+
+    # Salvar relatório final
+    json_filename = f".logs/processos_download_{etiqueta}_completo.json"
     with open(json_filename, "w", encoding="utf-8") as f:
-        json.dump(resultados, f, ensure_ascii=False, indent=4)
-    print(f"Resultados salvos em {json_filename}.")
-
-    return resultados
+        json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
+    
+    print(f"\nRelatório final salvo em {json_filename}")
+    print(f"Total de sucessos: {resultados_finais['resumoFinal']['sucessoTotal']} de {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
+    
+    return resultados_finais
 
 def iniciar_automacao():
 
@@ -609,10 +737,30 @@ def iniciar_automacao():
 def main():
     automator = iniciar_automacao()
     try:
+        # Cria diretório de logs se não existir
+        if not os.path.exists(".logs"):
+            os.makedirs(".logs")
+            
         search_on_tag("Felipe")
-        processos_encontrados = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
-        download_requested_processes(processos_encontrados, etiqueta="felipe")
-        time.sleep(2)
+        processos_area_download, relatorio_parcial = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
+        
+        # Aguarda um tempo para que os arquivos grandes sejam processados
+        if processos_area_download:
+            print(f"\nAguardando 30 segundos para processamento dos arquivos grandes...")
+            time.sleep(30)
+        
+        resultado_final = download_requested_processes(processos_area_download, etiqueta="felipe", relatorio_parcial=relatorio_parcial)
+        
+        # Exibe resumo final
+        print("\n========== RESUMO FINAL ==========")
+        print(f"Total de processos analisados: {resultado_final['resumoFinal']['totalProcessosAnalisados']}")
+        print(f"Downloads diretos: {resultado_final['resumoFinal']['downloadsDiretos']}")
+        print(f"Baixados da área de download: {resultado_final['resumoFinal']['baixadosAreaDownload']}")
+        print(f"Ainda não disponíveis na área: {resultado_final['resumoFinal']['naoEncontradosAreaDownload']}")
+        print(f"Sem documento solicitado: {resultado_final['resumoFinal']['semDocumento']}")
+        print(f"Erros: {resultado_final['resumoFinal']['erros']}")
+        print(f"TOTAL DE SUCESSOS: {resultado_final['resumoFinal']['sucessoTotal']}")
+        print("==================================")
         
     finally:
         automator.close()
