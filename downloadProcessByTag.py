@@ -443,7 +443,12 @@ def click_download_button_and_wait(typeDocument: DocumentoNome, process_number: 
 
         # Tenta clicar no botão de download
         try:
-            click_element(css_selector="div#navbar\\:botoesDownload input[value='Download']")
+            print("Tentando clique no botão Download")
+            click_element(
+                element_id="navbar:j_id304",
+                css_selector="#navbar\\:j_id304",
+                xpath="//input[@type='button' and @value='Download']"
+            )
             print(f"Botão de download clicado para '{typeDocument}'.")
             
             # Aguarda um pouco para verificar o tipo de resposta
@@ -489,7 +494,7 @@ def downloadProcessOnTagSearch(typeDocument):
         }
     }
     
-    process_numbers_area_download = []  # Processos que foram para área de download
+    process_numbers_area_download = []
     original_window = driver.current_window_handle
 
     driver.switch_to.default_content()
@@ -729,7 +734,7 @@ def iniciar_automacao():
     # Chamamos as funções do pje_automation
     automator.login(user, password)
     # automator.skip_token()
-    automator.select_profile(profile="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Diretor de Secretaria")
+    #automator.select_profile(profile="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Diretor de Secretaria")
 
     print("Automação inicializada com sucesso!")
     return automator
