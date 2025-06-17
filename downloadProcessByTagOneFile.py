@@ -432,9 +432,9 @@ def main():
         #skip_token()
         profile = os.getenv("PROFILE")
         select_profile(profile)
-        search_on_tag("Repetidos")
-        process_numbers = downloadProcessOnTagSearch("Petição Inicial")
-        download_requested_processes(process_numbers,etiqueta="Repetidos")
+        search_on_tag("teste")
+        process_numbers = downloadProcessOnTagSearch("Selecione")
+        download_requested_processes(process_numbers,etiqueta="CDEP")
         time.sleep(10)
     finally:
         driver.quit()

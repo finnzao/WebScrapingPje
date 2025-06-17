@@ -130,11 +130,30 @@ class PjeConsultaAutomator:
             (By.XPATH, "//a[contains(text(),'Prosseguir sem o Token')]"))).click()
 
     def select_profile(self, profile):
-        self.wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle'))).click()
-        btn = self.wait.until(EC.element_to_be_clickable(
-            (By.XPATH, f"//a[contains(text(), '{profile}')]")))
-        self.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
-        self.driver.execute_script("arguments[0].click();", btn)
+        try:
+            # Captura diretamente do DOM, mesmo que oculto
+            script = """
+                const el = document.getElementById('small-element');
+                return el ? el.textContent.trim() : null;
+            """
+            perfil_atual = self.driver.execute_script(script) or ''
+
+            if profile.strip().lower() in perfil_atual.strip().lower():
+                print(f"[select_profile] Perfil já está selecionado: {profile}")
+                return
+
+            # Caso contrário, abre dropdown e seleciona novo perfil
+            self.wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'dropdown-toggle'))).click()
+            btn = self.wait.until(EC.element_to_be_clickable(
+                (By.XPATH, f"//a[contains(text(), '{profile}')]")))
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
+            self.driver.execute_script("arguments[0].click();", btn)
+
+        except Exception as e:
+            print(f"[select_profile] Erro ao selecionar perfil '{profile}'. Continuando mesmo Assim")
+            return
+
+
 
     def save_to_json(self, data, filename="ResultadoProcessosPesquisa"):
         os.makedirs("./docs", exist_ok=True)
