@@ -203,6 +203,155 @@ def _norm(txt: str) -> str:
     txt = "".join(ch for ch in txt if unicodedata.category(ch) != "Mn")
     return " ".join(txt.lower().split())
 
+# ----------------------------------------------------------------------
+# NOVA FUNÇÃO: Download em massa via JavaScript
+# ----------------------------------------------------------------------
+def executar_download_em_massa_js() -> dict:
+    """
+    Executa a função JavaScript de download em massa de todos os arquivos
+    disponíveis na página atual do PJe.
+    Retorna um dicionário com informações sobre o resultado.
+    """
+    
+    js_download_function = """
+    async function downloadAllFilesPJe() {
+        // Função para aguardar um elemento aparecer
+        function waitForElement(selector, timeout = 10000) {
+            return new Promise((resolve, reject) => {
+                const startTime = Date.now();
+                
+                const checkElement = () => {
+                    const element = document.querySelector(selector);
+                    if (element) {
+                        resolve(element);
+                    } else if (Date.now() - startTime > timeout) {
+                        reject(new Error(`Elemento ${selector} não encontrado após ${timeout}ms`));
+                    } else {
+                        setTimeout(checkElement, 100);
+                    }
+                };
+                
+                checkElement();
+            });
+        }
+
+        // Função para aguardar o iframe carregar
+        function waitForIframeLoad(iframe) {
+            return new Promise((resolve) => {
+                if (iframe.contentDocument && iframe.contentDocument.readyState === 'complete') {
+                    resolve();
+                } else {
+                    iframe.onload = () => resolve();
+                    setTimeout(() => resolve(), 2000);
+                }
+            });
+        }
+
+        try {
+            console.log('Iniciando processo de download em massa...');
+            
+            // Aguarda o iframe
+            const iframe = await waitForElement('#ngFrame');
+            await waitForIframeLoad(iframe);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+            
+            if (!iframeDoc) {
+                throw new Error('Não foi possível acessar o conteúdo do iframe');
+            }
+            
+            // Busca botões de download
+            let downloadButtons = Array.from(iframeDoc.querySelectorAll('button')).filter(btn => {
+                const hasDownloadIcon = btn.querySelector('span.pi-download') || 
+                                       btn.querySelector('.pi-download') ||
+                                       btn.querySelector('[class*="download"]');
+                const hasDownloadClass = btn.className.includes('download');
+                return hasDownloadIcon || hasDownloadClass;
+            });
+            
+            // Se não encontrou, tenta seletores alternativos
+            if (downloadButtons.length === 0) {
+                const alternativeSelectors = [
+                    'button[title*="download" i]',
+                    'button[aria-label*="download" i]',
+                    'a[href*="download"]',
+                    'button.ui-button'
+                ];
+                
+                for (const selector of alternativeSelectors) {
+                    const elements = iframeDoc.querySelectorAll(selector);
+                    if (elements.length > 0) {
+                        downloadButtons = Array.from(elements);
+                        break;
+                    }
+                }
+            }
+            
+            if (downloadButtons.length === 0) {
+                return {
+                    success: false,
+                    message: 'Nenhum botão de download encontrado',
+                    totalButtons: 0,
+                    downloadedCount: 0
+                };
+            }
+            
+            // Executa os downloads
+            let successCount = 0;
+            for (let i = 0; i < downloadButtons.length; i++) {
+                try {
+                    const button = downloadButtons[i];
+                    button.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    button.click();
+                    successCount++;
+                    await new Promise(resolve => setTimeout(resolve, 1500));
+                } catch (error) {
+                    console.error(`Erro ao processar download ${i + 1}:`, error);
+                }
+            }
+            
+            return {
+                success: true,
+                message: 'Download em massa concluído',
+                totalButtons: downloadButtons.length,
+                downloadedCount: successCount
+            };
+            
+        } catch (error) {
+            return {
+                success: false,
+                message: error.message,
+                totalButtons: 0,
+                downloadedCount: 0
+            };
+        }
+    }
+    
+    // Executa a função e retorna o resultado
+    return await downloadAllFilesPJe();
+    """
+    
+    try:
+        print("[JS DOWNLOAD] Executando função de download em massa...")
+        resultado = driver.execute_script(js_download_function)
+        
+        print(f"[JS DOWNLOAD] Resultado: {resultado}")
+        print(f"[JS DOWNLOAD] Total de botões: {resultado.get('totalButtons', 0)}")
+        print(f"[JS DOWNLOAD] Downloads iniciados: {resultado.get('downloadedCount', 0)}")
+        
+        return resultado
+    except Exception as e:
+        print(f"[JS DOWNLOAD] Erro ao executar download em massa: {e}")
+        save_exception_screenshot("js_download_massa_erro.png")
+        return {
+            "success": False,
+            "message": str(e),
+            "totalButtons": 0,
+            "downloadedCount": 0
+        }
+
 @retry(max_retries=2)
 def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
                                          filtro_titulo: str = "peticao inicial",
@@ -496,105 +645,129 @@ def baixar_autos(document_type: str):
 # ----------------------------------------------------------------------
 # NOVA FUNÇÃO: downloadRequestedFileOnProcessesTimeline
 # ----------------------------------------------------------------------
-def downloadRequestedFileOnProcessesTimeline(process_numbers: list[str],
-                                           etiqueta: str,
-                                           search_term: str,
-                                           filtro_titulo: str = "petição inicial") -> dict:
+
+
+def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiqueta, relatorio_parcial):
     """
-    Para cada número de processo:
-      1. Abre a área de downloads e dispara o download completo.
-      2. Dentro do processo, pesquisa na timeline e baixa cada doc
-         que aparecer na lista de resultados com relatório detalhado.
+    Acessa a página de requisição de downloads e baixa apenas os processos que foram
+    enviados para a área de download, atualizando o relatório com o status final.
     """
-    resultados = {
+    resultados_finais = {
         "nomeEtiqueta": etiqueta,
-        "termosBusca": search_term,
-        "filtroTitulo": filtro_titulo,
-        "dataHoraInicio": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "ProcessosBaixadosAutos": [],
-        "ProcessosNãoEncontrados": [],
-        "DetalhesTimeline": [],
+        "tipoDocumento": relatorio_parcial["tipoDocumento"],
+        "dataHoraInicio": relatorio_parcial["dataHoraInicio"],
+        "dataHoraFinalizacao": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "processosDetalhados": relatorio_parcial["processosAnalisados"],
+        "areaDownload": {
+            "processosEsperados": len(process_numbers_area_download),
+            "processosBaixados": [],
+            "processosNaoEncontrados": [],
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+        },
         "resumoFinal": {
-            "totalProcessos": len(process_numbers),
-            "autosDownloadados": 0,
-            "timelineSucessoTotal": 0,
-            "timelineSucessoParcial": 0,
-            "timelineSemDocumentos": 0,
-            "timelineErros": 0,
-            "totalDocumentosTimeline": 0
+            "totalProcessosAnalisados": relatorio_parcial["resumo"]["totalProcessos"],
+            "downloadsDiretos": relatorio_parcial["resumo"]["downloadsDiretos"],
+            "enviadosAreaDownload": relatorio_parcial["resumo"]["enviadosAreaDownload"],
+            "baixadosAreaDownload": 0,
+            "naoEncontradosAreaDownload": 0,
+            "semDocumento": relatorio_parcial["resumo"]["semDocumento"],
+            "erros": relatorio_parcial["resumo"]["erros"],
+            "sucessoTotal": 0
         }
     }
 
-    for idx, num in enumerate(process_numbers, 1):
-        try:
-            print(f"\n[PROC] {idx}/{len(process_numbers)} – {num}")
+    if not process_numbers_area_download:
+        print("Nenhum processo foi enviado para área de download. Pulando esta etapa.")
+        resultados_finais["resumoFinal"]["sucessoTotal"] = resultados_finais["resumoFinal"]["downloadsDiretos"]
+        json_filename = f".logs/processos_download_{etiqueta}_completo.json"
+        with open(json_filename, "w", encoding="utf-8") as f:
+            json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
+        return resultados_finais
+
+    try:
+        print(f"\nAcessando área de download para baixar {len(process_numbers_area_download)} processos...")
+        driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        print("Dentro do iframe 'ngFrame'.")
+        
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, 'table')))
+        print("Tabela carregada.")
+        
+        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
+        print(f"Número total de processos na lista de downloads: {len(rows)}")
+        
+        downloaded_process_numbers = set()
+
+        for row in rows:
+            process_number_td = row.find_element(By.XPATH, "./td[1]")
+            process_number = process_number_td.text.strip()
             
-            # 1. Baixar autos completos
-            try:
-                driver.get("https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam")
-                wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, "ngFrame")))
-                linha = wait.until(EC.presence_of_element_located(
-                    (By.XPATH, f"//tr[td[1][contains(.,'{num}')]]")))
-                btn = linha.find_element(By.XPATH, ".//button")
-                driver.execute_script("arguments[0].click();", btn)
-                print("[OK] Download de autos disparado")
-                resultados["ProcessosBaixadosAutos"].append(num)
-                resultados["resumoFinal"]["autosDownloadados"] += 1
-            except TimeoutException:
-                print("[WARN] Processo não encontrado na área de downloads - continuando com timeline")
-
-            # 2. Buscar e baixar documentos da timeline
-            try:
-                driver.get(f"https://pje.tjba.jus.br/pje/Processo/consultaProcessoConsultasResumo.seam?processoNumero={num}")
+            if process_number in process_numbers_area_download and process_number not in downloaded_process_numbers:
+                print(f"Processo {process_number} encontrado na área de download. Baixando...")
                 
-                resultado_timeline = baixar_documentos_timeline_filtrando(
-                    busca_pesquisa=search_term,
-                    filtro_titulo=filtro_titulo,
-                    processo_numero=num
-                )
-                
-                resultados["DetalhesTimeline"].append(resultado_timeline)
-                
-                # Atualiza contadores
-                status = resultado_timeline["status"]
-                if status == "sucesso_total":
-                    resultados["resumoFinal"]["timelineSucessoTotal"] += 1
-                elif status == "sucesso_parcial":
-                    resultados["resumoFinal"]["timelineSucessoParcial"] += 1
-                elif status == "sem_documentos":
-                    resultados["resumoFinal"]["timelineSemDocumentos"] += 1
-                else:
-                    resultados["resumoFinal"]["timelineErros"] += 1
+                try:
+                    download_button = row.find_element(By.XPATH, "./td[last()]//button")
+                    driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
+                    download_button.click()
+                    time.sleep(5)
+                    
+                    downloaded_process_numbers.add(process_number)
+                    resultados_finais["areaDownload"]["processosBaixados"].append(process_number)
+                    
+                    # Atualiza o status do processo no relatório detalhado
+                    for proc in resultados_finais["processosDetalhados"]:
+                        if proc["numero"] == process_number:
+                            proc["statusDownload"] = "baixado_area_download"
+                            proc["observacoes"] += " - Baixado com sucesso da área de download"
+                            proc["timestampAreaDownload"] = time.strftime("%Y-%m-%d %H:%M:%S")
+                            
+                except Exception as e:
+                    print(f"Erro ao baixar processo {process_number} da área de download: {e}")
 
-                resultados["resumoFinal"]["totalDocumentosTimeline"] += resultado_timeline["documentos_baixados"]
+        # Identificar processos que não foram encontrados
+        processos_nao_encontrados = [
+            proc for proc in process_numbers_area_download
+            if proc not in downloaded_process_numbers
+        ]
+        
+        resultados_finais["areaDownload"]["processosNaoEncontrados"] = processos_nao_encontrados
+        
+        # Atualiza processos não encontrados no relatório detalhado
+        for proc_num in processos_nao_encontrados:
+            for proc in resultados_finais["processosDetalhados"]:
+                if proc["numero"] == proc_num:
+                    proc["statusDownload"] = "nao_encontrado_area_download"
+                    proc["observacoes"] += " - Não encontrado na área de download (ainda processando?)"
 
-            except Exception as e:
-                print(f"[ERR] Erro na timeline do processo {num}: {e}")
-                resultado_erro = {
-                    "numero": num,
-                    "status": "erro_timeline",
-                    "observacoes": f"Erro ao processar timeline: {str(e)}",
-                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-                resultados["DetalhesTimeline"].append(resultado_erro)
-                resultados["resumoFinal"]["timelineErros"] += 1
+        driver.switch_to.default_content()
+        print("Voltando para o conteúdo principal.")
 
-            driver.switch_to.default_content()
+    except Exception as e:
+        save_exception_screenshot("download_area_exception.png")
+        print(f"Erro ao acessar área de download: {e}")
 
-        except Exception as e:
-            save_screenshot(f"erro_process_{num}")
-            print(f"[ERR] Falha inesperada em {num}: {e}")
-            resultados["ProcessosNãoEncontrados"].append(num)
+    # Atualiza resumo final
+    resultados_finais["resumoFinal"]["baixadosAreaDownload"] = len(
+        resultados_finais["areaDownload"]["processosBaixados"]
+    )
+    resultados_finais["resumoFinal"]["naoEncontradosAreaDownload"] = len(
+        resultados_finais["areaDownload"]["processosNaoEncontrados"]
+    )
+    resultados_finais["resumoFinal"]["sucessoTotal"] = (
+        resultados_finais["resumoFinal"]["downloadsDiretos"] + 
+        resultados_finais["resumoFinal"]["baixadosAreaDownload"]
+    )
 
-    resultados["dataHoraFim"] = time.strftime("%Y-%m-%d %H:%M:%S")
+    # Salvar relatório final
+    json_filename = f".logs/processos_download_{etiqueta}_completo.json"
+    with open(json_filename, "w", encoding="utf-8") as f:
+        json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
+    
+    print(f"\nRelatório final salvo em {json_filename}")
+    print(f"Total de sucessos: {resultados_finais['resumoFinal']['sucessoTotal']} de {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
+    
+    return resultados_finais
 
-    # Persistência em JSON
-    fn = f".logs/processos_timeline_download_{etiqueta}.json"
-    os.makedirs(".logs", exist_ok=True)
-    with open(fn, "w", encoding="utf-8") as f:
-        json.dump(resultados, f, ensure_ascii=False, indent=2)
-    print(f"[DONE] Resultados salvos em {fn}")
-    return resultados
 
 # ----------------------------------------------------------------------
 # MAIN
@@ -630,7 +803,7 @@ def main():
         os.makedirs(".logs", exist_ok=True)
         
         # Abre página de etiquetas
-        open_tag_page("Felipe")
+        open_tag_page("Felipe 2")
         
         # Opção 1: Processar diretamente da lista de etiquetas
         relatorio_timeline = processos_em_lista_timeline(
@@ -650,11 +823,13 @@ def main():
         ]
         
         if numeros_processos:
+            # Exemplo com download JavaScript ativado
             resultados_combinados = downloadRequestedFileOnProcessesTimeline(
                 process_numbers=numeros_processos,
                 etiqueta="Felipe",
                 search_term="Petição Inicial",
-                filtro_titulo="petição inicial"
+                filtro_titulo="petição inicial",
+                usar_download_js=True  # Ativa o download em massa via JS
             )
             
             # Exibe resumo final
@@ -666,6 +841,10 @@ def main():
             print(f"Falha total: {relatorio_timeline['resumo']['falhaTotal']}")
             print(f"Erros: {relatorio_timeline['resumo']['erros']}")
             print(f"Total documentos baixados: {relatorio_timeline['resumo']['totalDocumentosBaixados']}")
+            
+            if resultados_combinados.get("usouDownloadJS"):
+                print(f"Downloads JS em massa: {resultados_combinados['resumoFinal']['totalDownloadsJS']}")
+            
             print("===========================================")
 
         time.sleep(5)
