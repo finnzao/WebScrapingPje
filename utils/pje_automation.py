@@ -131,23 +131,11 @@ class PjeConsultaAutomator:
 
     def select_profile(self, profile):
         try:
-            # Captura diretamente do DOM, mesmo que oculto
-            script = """
-                const el = document.getElementById('small-element');
-                return el ? el.textContent.trim() : null;
-            """
-            perfil_atual = self.driver.execute_script(script) or ''
-
-            if profile.strip().lower() in perfil_atual.strip().lower():
-                print(f"[select_profile] Perfil já está selecionado: {profile}")
-                return
-
-            # Caso contrário, abre dropdown e seleciona novo perfil
-            self.wait.until(EC.element_to_be_clickable((By.CLASS_NAME, 'dropdown-toggle'))).click()
-            btn = self.wait.until(EC.element_to_be_clickable(
-                (By.XPATH, f"//a[contains(text(), '{profile}')]")))
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", btn)
-            self.driver.execute_script("arguments[0].click();", btn)
+            dropdown = self.wait.until(EC.element_to_be_clickable((By.CLASS_NAME, "dropdown-toggle")))
+            dropdown.click()
+            opt = self.wait.until(EC.element_to_be_clickable((By.XPATH, f"//a[contains(text(),'{profile}')]")))
+            self.driver.execute_script("arguments[0].click();", opt)
+            print(f"[OK] Perfil '{profile}' selecionado")
 
         except Exception as e:
             print(f"[select_profile] Erro ao selecionar perfil '{profile}'. Continuando mesmo Assim")
