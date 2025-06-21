@@ -8,7 +8,11 @@ Automação PJe – download em massa de documentos via timeline
 • Sistema de relatórios detalhados para evitar falsos positivos
 """
 
-import os, re, time, json, unicodedata
+import os
+import re
+import time
+import json
+import unicodedata
 from functools import wraps
 from dotenv import load_dotenv
 from selenium import webdriver
@@ -20,13 +24,13 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException, NoSuchElementException, NoAlertPresentException
 )
 
-# Importa funcionalidades da classe de automação
 from utils.pje_automation import PjeConsultaAutomator
 
 # ----------------------------------------------------------------------
 # CONFIGURAÇÕES GERAIS
 # ----------------------------------------------------------------------
 driver, wait = None, None
+
 
 def retry(max_retries=2):
     """Decorador para reexecutar função em caso de Timeout/Stale."""
@@ -39,9 +43,11 @@ def retry(max_retries=2):
                 except (TimeoutException, StaleElementReferenceException) as e:
                     if attempt == max_retries:
                         raise
-                    print(f"[WARN] {func.__name__}: tentativa {attempt} falhou → {e}")
+                    print(
+                        f"[WARN] {func.__name__}: tentativa {attempt} falhou → {e}")
         return wrapper
     return decorator
+
 
 def save_screenshot(label):
     path_dir = ".logs/screenshots"
@@ -49,6 +55,7 @@ def save_screenshot(label):
     fp = os.path.join(path_dir, f"{label}.png")
     driver.save_screenshot(fp)
     print(f"[SNAP] {fp}")
+
 
 def save_exception_screenshot(filename):
     """Salva um screenshot atual do driver na pasta '.logs/exception'."""
@@ -59,6 +66,7 @@ def save_exception_screenshot(filename):
     driver.save_screenshot(filepath)
     print(f"Screenshot salvo em: {filepath}")
 
+
 def click_element(
     xpath: str = None,
     element_id: str = None,
@@ -66,20 +74,23 @@ def click_element(
 ) -> None:
     """Função melhorada para clicar em elementos com múltiplas estratégias."""
     if not xpath and not element_id and not css_selector:
-        raise ValueError("Informe ao menos um seletor: xpath, element_id ou css_selector.")
+        raise ValueError(
+            "Informe ao menos um seletor: xpath, element_id ou css_selector.")
 
     def _try_click(by: By, selector: str, desc: str) -> bool:
         """Espera o elemento ficar clicável e tenta clique normal + JavaScript."""
         try:
             print(f"[click_element] Tentando clicar via {desc}: {selector}")
             element = wait.until(EC.element_to_be_clickable((by, selector)))
-            driver.execute_script("arguments[0].scrollIntoView(true);", element)
+            driver.execute_script(
+                "arguments[0].scrollIntoView(true);", element)
             try:
                 element.click()
                 print(f"Elemento clicado com sucesso ({desc}): {selector}")
                 return True
             except (ElementClickInterceptedException, Exception) as e:
-                print(f"Erro ao clicar normalmente via {desc}: {e}. Tentando JavaScript...")
+                print(
+                    f"Erro ao clicar normalmente via {desc}: {e}. Tentando JavaScript...")
                 driver.execute_script("arguments[0].click();", element)
                 print(f"Elemento clicado com JavaScript ({desc}): {selector}")
                 return True
@@ -98,8 +109,10 @@ def click_element(
     # Tenta CSS Selector
     if css_selector:
         try:
-            print(f"[click_element] Tentando CSS SELECTOR (JS) via: {css_selector}")
-            wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector)))
+            print(
+                f"[click_element] Tentando CSS SELECTOR (JS) via: {css_selector}")
+            wait.until(EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, css_selector)))
             js_code = f"""
                 const el = document.querySelector('{css_selector}');
                 if(el) {{
@@ -110,7 +123,8 @@ def click_element(
                 }}
             """
             driver.execute_script(js_code)
-            print(f"Elemento clicado com sucesso (CSS SELECTOR + JS): {css_selector}")
+            print(
+                f"Elemento clicado com sucesso (CSS SELECTOR + JS): {css_selector}")
             return
         except Exception as ex:
             print(f"Falha ao tentar clicar via CSS SELECTOR + JS: {ex}")
@@ -120,6 +134,7 @@ def click_element(
     msg = f"Não foi possível clicar no elemento usando XPATH='{xpath}', ID='{element_id}' ou CSS SELECTOR='{css_selector}'."
     print(msg)
     raise NoSuchElementException(msg)
+
 
 def confirmar_popup_download(timeout_alert=5, timeout_modal=10) -> bool:
     """
@@ -158,6 +173,7 @@ def confirmar_popup_download(timeout_alert=5, timeout_modal=10) -> bool:
     print("[INFO] Nenhum pop‑up de confirmação encontrado")
     return False
 
+
 def switch_to_new_window(original_handles, timeout=10):
     """Alterna para a nova janela que foi aberta após a execução de uma ação."""
     try:
@@ -171,11 +187,13 @@ def switch_to_new_window(original_handles, timeout=10):
             print(f"Alternado para a nova janela: {new_window}")
             return new_window
         else:
-            raise TimeoutException("Nova janela não foi encontrada dentro do tempo especificado.")
+            raise TimeoutException(
+                "Nova janela não foi encontrada dentro do tempo especificado.")
     except TimeoutException as e:
         save_exception_screenshot("switch_to_new_window_timeout.png")
         print("TimeoutException: Não foi possível encontrar a nova janela. Captura de tela salva.")
         raise e
+
 
 def switch_to_original_window(original_handle):
     """Alterna de volta para a janela original."""
@@ -184,18 +202,24 @@ def switch_to_original_window(original_handle):
         print(f"Retornado para a janela original: {original_handle}")
     except Exception as e:
         save_exception_screenshot("switch_to_original_window_exception.png")
-        print(f"Erro ao retornar para a janela original. Captura de tela salva. Erro: {e}")
+        print(
+            f"Erro ao retornar para a janela original. Captura de tela salva. Erro: {e}")
         raise e
+
 
 def input_tag(search_text):
     """Função para pesquisar etiqueta."""
-    search_input = wait.until(EC.element_to_be_clickable((By.ID, "itPesquisarEtiquetas")))
+    search_input = wait.until(EC.element_to_be_clickable(
+        (By.ID, "itPesquisarEtiquetas")))
     search_input.clear()
     search_input.send_keys(search_text)
-    click_element(xpath="/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[1]/div[2]/div[1]/span/button[1]")
+    click_element(
+        xpath="/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[1]/div[2]/div[1]/span/button[1]")
     time.sleep(1)
     print(f"Pesquisa realizada com o texto: {search_text}")
-    click_element(xpath="/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[2]/ul/p-datalist/div/div/ul/li/div/li/div[2]/span/span")
+    click_element(
+        xpath="/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[2]/ul/p-datalist/div/div/ul/li/div/li/div[2]/span/span")
+
 
 def _norm(txt: str) -> str:
     """minúsculas + sem acento + espaços comprimidos"""
@@ -206,13 +230,15 @@ def _norm(txt: str) -> str:
 # ----------------------------------------------------------------------
 # NOVA FUNÇÃO: Download em massa via JavaScript
 # ----------------------------------------------------------------------
+
+
 def executar_download_em_massa_js() -> dict:
     """
     Executa a função JavaScript de download em massa de todos os arquivos
     disponíveis na página atual do PJe.
     Retorna um dicionário com informações sobre o resultado.
     """
-    
+
     js_download_function = """
     async function downloadAllFilesPJe() {
         // Função para aguardar um elemento aparecer
@@ -332,15 +358,17 @@ def executar_download_em_massa_js() -> dict:
     // Executa a função e retorna o resultado
     return await downloadAllFilesPJe();
     """
-    
+
     try:
         print("[JS DOWNLOAD] Executando função de download em massa...")
         resultado = driver.execute_script(js_download_function)
-        
+
         print(f"[JS DOWNLOAD] Resultado: {resultado}")
-        print(f"[JS DOWNLOAD] Total de botões: {resultado.get('totalButtons', 0)}")
-        print(f"[JS DOWNLOAD] Downloads iniciados: {resultado.get('downloadedCount', 0)}")
-        
+        print(
+            f"[JS DOWNLOAD] Total de botões: {resultado.get('totalButtons', 0)}")
+        print(
+            f"[JS DOWNLOAD] Downloads iniciados: {resultado.get('downloadedCount', 0)}")
+
         return resultado
     except Exception as e:
         print(f"[JS DOWNLOAD] Erro ao executar download em massa: {e}")
@@ -351,6 +379,7 @@ def executar_download_em_massa_js() -> dict:
             "totalButtons": 0,
             "downloadedCount": 0
         }
+
 
 @retry(max_retries=2)
 def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
@@ -387,9 +416,8 @@ def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
 
     try:
         # --- entrar no iframe da timeline ---
-        #driver.switch_to.default_content()
-        #wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, frame_id)))
-
+        # driver.switch_to.default_content()
+        # wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, frame_id)))
 
         # --- pesquisa ---
         campo = wait.until(EC.element_to_be_clickable((By.ID, id_campo)))
@@ -399,16 +427,20 @@ def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
         time.sleep(2)
 
         # --- coletar links ---
-        container = wait.until(EC.presence_of_element_located((By.ID, id_container)))
+        container = wait.until(
+            EC.presence_of_element_located((By.ID, id_container)))
         todos_links = container.find_elements(By.TAG_NAME, "a")
-        links_filtrados = [a for a in todos_links if alvo_norm in _norm(a.text)]
+        links_filtrados = [
+            a for a in todos_links if alvo_norm in _norm(a.text)]
 
         resultado_processo["documentos_encontrados"] = len(links_filtrados)
-        print(f"[TL] {len(todos_links)} link(s) totais  •  {len(links_filtrados)} após filtro '{filtro_titulo}'")
+        print(
+            f"[TL] {len(todos_links)} link(s) totais  •  {len(links_filtrados)} após filtro '{filtro_titulo}'")
 
         if len(links_filtrados) == 0:
             resultado_processo["status"] = "sem_documentos"
-            resultado_processo["observacoes"] = f"Nenhum documento encontrado com o filtro '{filtro_titulo}'"
+            resultado_processo[
+                "observacoes"] = f"Nenhum documento encontrado com o filtro '{filtro_titulo}'"
             return resultado_processo
 
         # --- download apenas dos links filtrados ---
@@ -419,22 +451,24 @@ def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
                 "status": "erro",
                 "observacao": ""
             }
-            
+
             try:
-                driver.execute_script("arguments[0].scrollIntoView(true);", link)
+                driver.execute_script(
+                    "arguments[0].scrollIntoView(true);", link)
                 driver.execute_script("arguments[0].click();", link)
 
-                btn_dl = wait.until(EC.element_to_be_clickable((By.XPATH, xpath_download)))
+                btn_dl = wait.until(EC.element_to_be_clickable(
+                    (By.XPATH, xpath_download)))
                 driver.execute_script("arguments[0].click();", btn_dl)
 
                 if confirmar_popup_download():
                     detalhe_download["observacao"] = "Pop-up de confirmação aceito"
-                
+
                 baixados += 1
                 detalhe_download["status"] = "sucesso"
                 print(f"   └─ ({idx}) download OK — {link.text.strip()}")
                 time.sleep(2)
-                
+
             except (TimeoutException, ElementClickInterceptedException) as e:
                 detalhe_download["status"] = "falha"
                 detalhe_download["observacao"] = str(e)
@@ -445,7 +479,7 @@ def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
             resultado_processo["detalhes_downloads"].append(detalhe_download)
 
         resultado_processo["documentos_baixados"] = baixados
-        
+
         if baixados == len(links_filtrados):
             resultado_processo["status"] = "sucesso_total"
             resultado_processo["observacoes"] = "Todos os documentos foram baixados com sucesso"
@@ -470,11 +504,13 @@ def baixar_documentos_timeline_filtrando(busca_pesquisa: str,
 
     return resultado_processo
 
+
 def click_on_process(process_element):
     """Clica no elemento do processo e alterna para a nova janela."""
     try:
         original_handles = set(driver.window_handles)
-        driver.execute_script("arguments[0].scrollIntoView(true);", process_element)
+        driver.execute_script(
+            "arguments[0].scrollIntoView(true);", process_element)
         driver.execute_script("arguments[0].click();", process_element)
         print("Processo clicado com sucesso!")
         switch_to_new_window(original_handles)
@@ -483,11 +519,13 @@ def click_on_process(process_element):
         print(f"Erro ao clicar no processo. Erro: {e}")
         raise e
 
+
 def get_process_list():
     """Retorna uma lista de elementos representando os processos encontrados."""
     try:
         process_xpath = "//processo-datalist-card"
-        processes = wait.until(EC.presence_of_all_elements_located((By.XPATH, process_xpath)))
+        processes = wait.until(
+            EC.presence_of_all_elements_located((By.XPATH, process_xpath)))
         print(f"Número de processos encontrados: {len(processes)}")
         return processes
     except Exception as e:
@@ -495,14 +533,17 @@ def get_process_list():
         print(f"Erro ao obter a lista de processos. Erro: {e}")
         raise e
 
+
 @retry()
 def open_tag_page(tag: str):
     """Ação principal que pesquisa os processos via etiqueta."""
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     original_handles = set(driver.window_handles)
     print(f"Handles originais das janelas: {original_handles}")
-    click_element(xpath="/html/body/app-root/selector/div/div/div[1]/side-bar/nav/ul/li[5]/a")
+    click_element(
+        xpath="/html/body/app-root/selector/div/div/div[1]/side-bar/nav/ul/li[5]/a")
     input_tag(tag)
+
 
 def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "petição inicial") -> dict:
     """
@@ -529,7 +570,8 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
 
     try:
         driver.switch_to.default_content()
-        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        wait.until(EC.frame_to_be_available_and_switch_to_it(
+            (By.ID, 'ngFrame')))
         print("Dentro do frame 'ngFrame'.")
 
         total_processes = len(get_process_list())
@@ -537,13 +579,15 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
 
         for index in range(1, total_processes + 1):
             raw_process_number = "NÃO IDENTIFICADO"
-            
+
             try:
-                print(f"\nIniciando o download para o processo {index} de {total_processes}")
+                print(
+                    f"\nIniciando o download para o processo {index} de {total_processes}")
                 process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
-                process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+                process_element = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, process_xpath)))
                 raw_process_number = process_element.text.strip()
-                
+
                 # Ajuste do número do processo no formato XXXXXX-XX.XXXX.X.XX.XXXX
                 just_digits = re.sub(r'\D', '', raw_process_number)
                 if len(just_digits) >= 17:
@@ -554,21 +598,21 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
                     )
                 else:
                     process_number = raw_process_number
-                    
+
                 print(f"Número do processo: {process_number}")
 
                 # Dentro do processo
                 click_on_process(process_element)
                 driver.switch_to.default_content()
                 print("Saiu do frame 'ngFrame'.")
-                
+
                 # Baixa documentos da timeline
                 resultado_processo = baixar_documentos_timeline_filtrando(
                     busca_pesquisa=busca_pesquisa,
                     filtro_titulo=filtro_titulo,
                     processo_numero=process_number
                 )
-                
+
                 # Atualiza contadores do resumo
                 status = resultado_processo["status"]
                 if status == "sucesso_total":
@@ -583,19 +627,21 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
                     relatorio_detalhado["resumo"]["erros"] += 1
 
                 relatorio_detalhado["resumo"]["totalDocumentosBaixados"] += resultado_processo["documentos_baixados"]
-                relatorio_detalhado["processosAnalisados"].append(resultado_processo)
+                relatorio_detalhado["processosAnalisados"].append(
+                    resultado_processo)
 
                 time.sleep(1)
                 driver.close()
                 print("Janela atual fechada com sucesso.")
                 driver.switch_to.window(original_window)
                 print("Retornado para a janela original.")
-                wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+                wait.until(EC.frame_to_be_available_and_switch_to_it(
+                    (By.ID, 'ngFrame')))
                 print("Alternado para o frame 'ngFrame'.")
 
             except Exception as e:
                 print(f"Erro no processo {raw_process_number}: {e}")
-                
+
                 resultado_erro = {
                     "numero": raw_process_number,
                     "busca_termo": busca_pesquisa,
@@ -608,16 +654,18 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                     "observacoes": f"Erro geral: {str(e)}"
                 }
-                
-                relatorio_detalhado["processosAnalisados"].append(resultado_erro)
+
+                relatorio_detalhado["processosAnalisados"].append(
+                    resultado_erro)
                 relatorio_detalhado["resumo"]["erros"] += 1
-                
+
                 try:
                     if len(driver.window_handles) > 1:
                         driver.close()
                         print("Janela atual fechada após erro.")
                         driver.switch_to.window(original_window)
-                        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+                        wait.until(EC.frame_to_be_available_and_switch_to_it(
+                            (By.ID, 'ngFrame')))
                 except Exception as inner_e:
                     print(f"Erro ao fechar janela após erro: {inner_e}")
 
@@ -631,11 +679,14 @@ def processos_em_lista_timeline(busca_pesquisa: str, filtro_titulo: str = "peti�
 # ----------------------------------------------------------------------
 # DOWNLOAD DE AUTO COMPLETO (mantido do código original)
 # ----------------------------------------------------------------------
+
+
 def baixar_autos(document_type: str):
     """Baixa autos completos do processo."""
-    click_css = lambda sel: driver.execute_script("arguments[0].click()", wait.until(
+    def click_css(sel): return driver.execute_script("arguments[0].click()", wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, sel))))
-    click_css('a.btn-menu-abas.dropdown-toggle[title="Download autos do processo"]')
+    click_css(
+        'a.btn-menu-abas.dropdown-toggle[title="Download autos do processo"]')
     Select(wait.until(EC.element_to_be_clickable((By.ID, "navbar:cbTipoDocumento"))))\
         .select_by_visible_text(document_type)
     click_css("#navbar\\:botoesDownload .btn-primary")
@@ -643,23 +694,24 @@ def baixar_autos(document_type: str):
     time.sleep(3)
 
 # ----------------------------------------------------------------------
-# NOVA FUNÇÃO: downloadRequestedFileOnProcessesTimeline
+# FUNÇÃO MODIFICADA: downloadRequestedFileOnProcessesTimeline
 # ----------------------------------------------------------------------
 
 
-def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiqueta, relatorio_parcial):
+def downloadRequestedFilesPageDownload(processos_da_etiqueta, etiqueta, relatorio_parcial):
     """
-    Acessa a página de requisição de downloads e baixa apenas os processos que foram
-    enviados para a área de download, atualizando o relatório com o status final.
+    Acessa a página de requisição de downloads e baixa APENAS os processos que:
+    1. Estão na área de download E
+    2. Pertencem à etiqueta atual sendo processada
     """
     resultados_finais = {
         "nomeEtiqueta": etiqueta,
-        "tipoDocumento": relatorio_parcial["tipoDocumento"],
+        "tipoDocumento": relatorio_parcial.get("tipoDocumento", "Petição Inicial"),
         "dataHoraInicio": relatorio_parcial["dataHoraInicio"],
         "dataHoraFinalizacao": time.strftime("%Y-%m-%d %H:%M:%S"),
         "processosDetalhados": relatorio_parcial["processosAnalisados"],
         "areaDownload": {
-            "processosEsperados": len(process_numbers_area_download),
+            "processosVerificados": len(processos_da_etiqueta),
             "processosBaixados": [],
             "processosNaoEncontrados": [],
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
@@ -667,7 +719,7 @@ def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiq
         "resumoFinal": {
             "totalProcessosAnalisados": relatorio_parcial["resumo"]["totalProcessos"],
             "downloadsDiretos": relatorio_parcial["resumo"]["downloadsDiretos"],
-            "enviadosAreaDownload": relatorio_parcial["resumo"]["enviadosAreaDownload"],
+            "verificadosAreaDownload": len(processos_da_etiqueta),
             "baixadosAreaDownload": 0,
             "naoEncontradosAreaDownload": 0,
             "semDocumento": relatorio_parcial["resumo"]["semDocumento"],
@@ -676,8 +728,8 @@ def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiq
         }
     }
 
-    if not process_numbers_area_download:
-        print("Nenhum processo foi enviado para área de download. Pulando esta etapa.")
+    if not processos_da_etiqueta:
+        print("Nenhum processo da etiqueta para verificar na área de download.")
         resultados_finais["resumoFinal"]["sucessoTotal"] = resultados_finais["resumoFinal"]["downloadsDiretos"]
         json_filename = f".logs/processos_download_{etiqueta}_completo.json"
         with open(json_filename, "w", encoding="utf-8") as f:
@@ -685,59 +737,76 @@ def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiq
         return resultados_finais
 
     try:
-        print(f"\nAcessando área de download para baixar {len(process_numbers_area_download)} processos...")
+        print(
+            f"\nAcessando área de download para verificar {len(processos_da_etiqueta)} processos da etiqueta '{etiqueta}'...")
         driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
-        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        wait.until(EC.frame_to_be_available_and_switch_to_it(
+            (By.ID, 'ngFrame')))
         print("Dentro do iframe 'ngFrame'.")
-        
+
         wait.until(EC.presence_of_element_located((By.TAG_NAME, 'table')))
         print("Tabela carregada.")
-        
-        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
+
+        rows = wait.until(EC.presence_of_all_elements_located(
+            (By.XPATH, "//table//tbody//tr")))
         print(f"Número total de processos na lista de downloads: {len(rows)}")
-        
+
+        # Conjunto de números de processos da etiqueta para verificação rápida
+        numeros_etiqueta = set(processos_da_etiqueta)
         downloaded_process_numbers = set()
 
         for row in rows:
-            process_number_td = row.find_element(By.XPATH, "./td[1]")
-            process_number = process_number_td.text.strip()
-            
-            if process_number in process_numbers_area_download and process_number not in downloaded_process_numbers:
-                print(f"Processo {process_number} encontrado na área de download. Baixando...")
-                
-                try:
-                    download_button = row.find_element(By.XPATH, "./td[last()]//button")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
-                    download_button.click()
-                    time.sleep(5)
-                    
-                    downloaded_process_numbers.add(process_number)
-                    resultados_finais["areaDownload"]["processosBaixados"].append(process_number)
-                    
-                    # Atualiza o status do processo no relatório detalhado
-                    for proc in resultados_finais["processosDetalhados"]:
-                        if proc["numero"] == process_number:
-                            proc["statusDownload"] = "baixado_area_download"
-                            proc["observacoes"] += " - Baixado com sucesso da área de download"
-                            proc["timestampAreaDownload"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                            
-                except Exception as e:
-                    print(f"Erro ao baixar processo {process_number} da área de download: {e}")
+            try:
+                process_number_td = row.find_element(By.XPATH, "./td[1]")
+                process_number = process_number_td.text.strip()
 
-        # Identificar processos que não foram encontrados
+                # Verifica se o processo pertence à etiqueta atual
+                if process_number in numeros_etiqueta and process_number not in downloaded_process_numbers:
+                    print(
+                        f"Processo {process_number} da etiqueta '{etiqueta}' encontrado. Baixando...")
+
+                    try:
+                        download_button = row.find_element(
+                            By.XPATH, "./td[last()]//button")
+                        driver.execute_script(
+                            "arguments[0].scrollIntoView(true);", download_button)
+                        download_button.click()
+                        time.sleep(5)
+
+                        downloaded_process_numbers.add(process_number)
+                        resultados_finais["areaDownload"]["processosBaixados"].append(
+                            process_number)
+
+                        # Atualiza o status do processo no relatório detalhado
+                        for proc in resultados_finais["processosDetalhados"]:
+                            if proc["numero"] == process_number:
+                                proc["statusDownload"] = "baixado_area_download"
+                                proc["observacoes"] += " - Baixado com sucesso da área de download"
+                                proc["timestampAreaDownload"] = time.strftime(
+                                    "%Y-%m-%d %H:%M:%S")
+
+                    except Exception as e:
+                        print(
+                            f"Erro ao baixar processo {process_number} da área de download: {e}")
+
+            except Exception as e:
+                print(f"Erro ao processar linha da tabela: {e}")
+                continue
+
+        # Identificar processos da etiqueta que não foram encontrados na área de download
         processos_nao_encontrados = [
-            proc for proc in process_numbers_area_download
+            proc for proc in processos_da_etiqueta
             if proc not in downloaded_process_numbers
         ]
-        
+
         resultados_finais["areaDownload"]["processosNaoEncontrados"] = processos_nao_encontrados
-        
+
         # Atualiza processos não encontrados no relatório detalhado
         for proc_num in processos_nao_encontrados:
             for proc in resultados_finais["processosDetalhados"]:
                 if proc["numero"] == proc_num:
                     proc["statusDownload"] = "nao_encontrado_area_download"
-                    proc["observacoes"] += " - Não encontrado na área de download (ainda processando?)"
+                    proc["observacoes"] += " - Não encontrado na área de download"
 
         driver.switch_to.default_content()
         print("Voltando para o conteúdo principal.")
@@ -754,7 +823,7 @@ def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiq
         resultados_finais["areaDownload"]["processosNaoEncontrados"]
     )
     resultados_finais["resumoFinal"]["sucessoTotal"] = (
-        resultados_finais["resumoFinal"]["downloadsDiretos"] + 
+        resultados_finais["resumoFinal"]["downloadsDiretos"] +
         resultados_finais["resumoFinal"]["baixadosAreaDownload"]
     )
 
@@ -762,16 +831,20 @@ def downloadRequestedFileOnProcessesTimeline(process_numbers_area_download, etiq
     json_filename = f".logs/processos_download_{etiqueta}_completo.json"
     with open(json_filename, "w", encoding="utf-8") as f:
         json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
-    
-    print(f"\nRelatório final salvo em {json_filename}")
-    print(f"Total de sucessos: {resultados_finais['resumoFinal']['sucessoTotal']} de {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
-    
-    return resultados_finais
 
+    print(f"\nRelatório final salvo em {json_filename}")
+    print(
+        f"Processos baixados da área de download: {len(resultados_finais['areaDownload']['processosBaixados'])}")
+    print(
+        f"Total de sucessos: {resultados_finais['resumoFinal']['sucessoTotal']} de {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
+
+    return resultados_finais
 
 # ----------------------------------------------------------------------
 # MAIN
 # ----------------------------------------------------------------------
+
+
 def iniciar_automacao():
     """Inicializa a automação usando a classe PjeConsultaAutomator."""
     load_dotenv()
@@ -796,60 +869,110 @@ def iniciar_automacao():
     print("Automação inicializada com sucesso!")
     return automator
 
+
 def main():
     automator = iniciar_automacao()
     try:
         # Cria diretório de logs se não existir
         os.makedirs(".logs", exist_ok=True)
-        
+
+        # Define a etiqueta a ser pesquisada
+        etiqueta = "Felipe [ Analise ] "
+
         # Abre página de etiquetas
-        open_tag_page("Felipe 2")
-        
-        # Opção 1: Processar diretamente da lista de etiquetas
+        open_tag_page(etiqueta)
+
+        # Processar diretamente da lista de etiquetas
         relatorio_timeline = processos_em_lista_timeline(
             busca_pesquisa="Petição inicial",
             filtro_titulo="petição"
         )
-        
+
         # Salva relatório da timeline
         with open(".logs/relatorio_timeline_completo.json", "w", encoding="utf-8") as f:
             json.dump(relatorio_timeline, f, ensure_ascii=False, indent=2)
-        
-        # Opção 2: Usar função combinada (autos + timeline) com números específicos
-        # Extrai números dos processos analisados
-        numeros_processos = [
+
+        # MODIFICAÇÃO: Pega TODOS os processos da etiqueta para verificar na área de download
+        processos_da_etiqueta = [
             proc["numero"] for proc in relatorio_timeline["processosAnalisados"]
             if proc["numero"] != "NÃO IDENTIFICADO"
         ]
-        
-        if numeros_processos:
-            # Exemplo com download JavaScript ativado
-            resultados_combinados = downloadRequestedFileOnProcessesTimeline(
-                process_numbers=numeros_processos,
-                etiqueta="Felipe",
-                search_term="Petição Inicial",
-                filtro_titulo="petição inicial",
-                usar_download_js=True  # Ativa o download em massa via JS
+
+        print(
+            f"\nTotal de processos da etiqueta '{etiqueta}' para verificar na área de download: {len(processos_da_etiqueta)}")
+
+        # Sempre verifica a área de download se houver processos
+        if processos_da_etiqueta:
+            # Prepara o relatório parcial para a função
+            relatorio_parcial = {
+                "tipoDocumento": "Petição Inicial",
+                "dataHoraInicio": relatorio_timeline["dataHoraInicio"],
+                "processosAnalisados": relatorio_timeline["processosAnalisados"],
+                "resumo": {
+                    "totalProcessos": relatorio_timeline["resumo"]["totalProcessos"],
+                    "downloadsDiretos": relatorio_timeline["resumo"]["sucessoTotal"] + relatorio_timeline["resumo"]["sucessoParcial"],
+                    # Todos serão verificados
+                    "enviadosAreaDownload": len(processos_da_etiqueta),
+                    "semDocumento": relatorio_timeline["resumo"]["semDocumentos"],
+                    "erros": relatorio_timeline["resumo"]["erros"]
+                }
+            }
+
+            # Chama a função modificada que verifica apenas processos da etiqueta
+            resultados_finais = automator.download_files_from_download_area(
+                process_numbers=processos_da_etiqueta,
+                tag_name=etiqueta,
+                partial_report=relatorio_parcial,
+                save_report=True
             )
-            
-            # Exibe resumo final
+
+            # Exibe resumo final completo
+            print("\n========== RESUMO FINAL COMPLETO ==========")
+            print(f"Etiqueta: {etiqueta}")
+            print(
+                f"Total de processos analisados: {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
+            print(
+                f"Downloads diretos (timeline): {resultados_finais['resumoFinal']['downloadsDiretos']}")
+            print(
+                f"Verificados na área de download: {resultados_finais['resumoFinal']['verificadosAreaDownload']}")
+            print(
+                f"Baixados da área de download: {resultados_finais['resumoFinal']['baixadosAreaDownload']}")
+            print(
+                f"Não encontrados na área de download: {resultados_finais['resumoFinal']['naoEncontradosAreaDownload']}")
+            print(
+                f"Sem documentos: {resultados_finais['resumoFinal']['semDocumento']}")
+            print(f"Erros: {resultados_finais['resumoFinal']['erros']}")
+            print(
+                f"SUCESSO TOTAL: {resultados_finais['resumoFinal']['sucessoTotal']}")
+            print("===========================================")
+            input("Pressione Enter para finalizar...")
+        else:
+            # Se não houver processos, apenas exibe resumo da timeline
             print("\n========== RESUMO FINAL TIMELINE ==========")
-            print(f"Total de processos: {relatorio_timeline['resumo']['totalProcessos']}")
-            print(f"Sucesso total: {relatorio_timeline['resumo']['sucessoTotal']}")
-            print(f"Sucesso parcial: {relatorio_timeline['resumo']['sucessoParcial']}")
-            print(f"Sem documentos: {relatorio_timeline['resumo']['semDocumentos']}")
+            print(
+                f"Total de processos: {relatorio_timeline['resumo']['totalProcessos']}")
+            print(
+                f"Sucesso total: {relatorio_timeline['resumo']['sucessoTotal']}")
+            print(
+                f"Sucesso parcial: {relatorio_timeline['resumo']['sucessoParcial']}")
+            print(
+                f"Sem documentos: {relatorio_timeline['resumo']['semDocumentos']}")
             print(f"Falha total: {relatorio_timeline['resumo']['falhaTotal']}")
             print(f"Erros: {relatorio_timeline['resumo']['erros']}")
-            print(f"Total documentos baixados: {relatorio_timeline['resumo']['totalDocumentosBaixados']}")
-            
-            if resultados_combinados.get("usouDownloadJS"):
-                print(f"Downloads JS em massa: {resultados_combinados['resumoFinal']['totalDownloadsJS']}")
-            
+            print(
+                f"Total documentos baixados: {relatorio_timeline['resumo']['totalDocumentosBaixados']}")
             print("===========================================")
 
         time.sleep(5)
+
+    except Exception as e:
+        print(f"Erro na execução principal: {e}")
+        save_exception_screenshot("erro_main.png")
+        raise
+
     finally:
         automator.close()
+
 
 if __name__ == "__main__":
     main()

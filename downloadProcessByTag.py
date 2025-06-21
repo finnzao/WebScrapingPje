@@ -494,7 +494,6 @@ def downloadProcessOnTagSearch(typeDocument):
         }
     }
     
-    process_numbers_area_download = []
     original_window = driver.current_window_handle
 
     driver.switch_to.default_content()
@@ -550,7 +549,6 @@ def downloadProcessOnTagSearch(typeDocument):
                 info_processo["observacoes"] = "Download realizado diretamente"
             elif status_download == 'area_download':
                 relatorio_detalhado["resumo"]["enviadosAreaDownload"] += 1
-                process_numbers_area_download.append(process_number)
                 info_processo["observacoes"] = "Arquivo grande - enviado para área de download"
             elif status_download == 'sem_documento':
                 relatorio_detalhado["resumo"]["semDocumento"] += 1
@@ -592,128 +590,7 @@ def downloadProcessOnTagSearch(typeDocument):
         json.dump(relatorio_detalhado, f, ensure_ascii=False, indent=4)
     
     print("Processamento da primeira etapa concluído.")
-    return process_numbers_area_download, relatorio_detalhado
-
-def download_requested_processes(process_numbers_area_download, etiqueta, relatorio_parcial):
-    """
-    Acessa a página de requisição de downloads e baixa apenas os processos que foram
-    enviados para a área de download, atualizando o relatório com o status final.
-    """
-    resultados_finais = {
-        "nomeEtiqueta": etiqueta,
-        "tipoDocumento": relatorio_parcial["tipoDocumento"],
-        "dataHoraInicio": relatorio_parcial["dataHoraInicio"],
-        "dataHoraFinalizacao": time.strftime("%Y-%m-%d %H:%M:%S"),
-        "processosDetalhados": relatorio_parcial["processosAnalisados"],
-        "areaDownload": {
-            "processosEsperados": len(process_numbers_area_download),
-            "processosBaixados": [],
-            "processosNaoEncontrados": [],
-            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
-        },
-        "resumoFinal": {
-            "totalProcessosAnalisados": relatorio_parcial["resumo"]["totalProcessos"],
-            "downloadsDiretos": relatorio_parcial["resumo"]["downloadsDiretos"],
-            "enviadosAreaDownload": relatorio_parcial["resumo"]["enviadosAreaDownload"],
-            "baixadosAreaDownload": 0,
-            "naoEncontradosAreaDownload": 0,
-            "semDocumento": relatorio_parcial["resumo"]["semDocumento"],
-            "erros": relatorio_parcial["resumo"]["erros"],
-            "sucessoTotal": 0
-        }
-    }
-
-    if not process_numbers_area_download:
-        print("Nenhum processo foi enviado para área de download. Pulando esta etapa.")
-        resultados_finais["resumoFinal"]["sucessoTotal"] = resultados_finais["resumoFinal"]["downloadsDiretos"]
-        json_filename = f".logs/processos_download_{etiqueta}_completo.json"
-        with open(json_filename, "w", encoding="utf-8") as f:
-            json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
-        return resultados_finais
-
-    try:
-        print(f"\nAcessando área de download para baixar {len(process_numbers_area_download)} processos...")
-        driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
-        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-        print("Dentro do iframe 'ngFrame'.")
-        
-        wait.until(EC.presence_of_element_located((By.TAG_NAME, 'table')))
-        print("Tabela carregada.")
-        
-        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
-        print(f"Número total de processos na lista de downloads: {len(rows)}")
-        
-        downloaded_process_numbers = set()
-
-        for row in rows:
-            process_number_td = row.find_element(By.XPATH, "./td[1]")
-            process_number = process_number_td.text.strip()
-            
-            if process_number in process_numbers_area_download and process_number not in downloaded_process_numbers:
-                print(f"Processo {process_number} encontrado na área de download. Baixando...")
-                
-                try:
-                    download_button = row.find_element(By.XPATH, "./td[last()]//button")
-                    driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
-                    download_button.click()
-                    time.sleep(5)
-                    
-                    downloaded_process_numbers.add(process_number)
-                    resultados_finais["areaDownload"]["processosBaixados"].append(process_number)
-                    
-                    # Atualiza o status do processo no relatório detalhado
-                    for proc in resultados_finais["processosDetalhados"]:
-                        if proc["numero"] == process_number:
-                            proc["statusDownload"] = "baixado_area_download"
-                            proc["observacoes"] += " - Baixado com sucesso da área de download"
-                            proc["timestampAreaDownload"] = time.strftime("%Y-%m-%d %H:%M:%S")
-                            
-                except Exception as e:
-                    print(f"Erro ao baixar processo {process_number} da área de download: {e}")
-
-        # Identificar processos que não foram encontrados
-        processos_nao_encontrados = [
-            proc for proc in process_numbers_area_download
-            if proc not in downloaded_process_numbers
-        ]
-        
-        resultados_finais["areaDownload"]["processosNaoEncontrados"] = processos_nao_encontrados
-        
-        # Atualiza processos não encontrados no relatório detalhado
-        for proc_num in processos_nao_encontrados:
-            for proc in resultados_finais["processosDetalhados"]:
-                if proc["numero"] == proc_num:
-                    proc["statusDownload"] = "nao_encontrado_area_download"
-                    proc["observacoes"] += " - Não encontrado na área de download (ainda processando?)"
-
-        driver.switch_to.default_content()
-        print("Voltando para o conteúdo principal.")
-
-    except Exception as e:
-        save_exception_screenshot("download_area_exception.png")
-        print(f"Erro ao acessar área de download: {e}")
-
-    # Atualiza resumo final
-    resultados_finais["resumoFinal"]["baixadosAreaDownload"] = len(
-        resultados_finais["areaDownload"]["processosBaixados"]
-    )
-    resultados_finais["resumoFinal"]["naoEncontradosAreaDownload"] = len(
-        resultados_finais["areaDownload"]["processosNaoEncontrados"]
-    )
-    resultados_finais["resumoFinal"]["sucessoTotal"] = (
-        resultados_finais["resumoFinal"]["downloadsDiretos"] + 
-        resultados_finais["resumoFinal"]["baixadosAreaDownload"]
-    )
-
-    # Salvar relatório final
-    json_filename = f".logs/processos_download_{etiqueta}_completo.json"
-    with open(json_filename, "w", encoding="utf-8") as f:
-        json.dump(resultados_finais, f, ensure_ascii=False, indent=4)
-    
-    print(f"\nRelatório final salvo em {json_filename}")
-    print(f"Total de sucessos: {resultados_finais['resumoFinal']['sucessoTotal']} de {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
-    
-    return resultados_finais
+    return relatorio_detalhado
 
 def iniciar_automacao():
 
@@ -745,27 +622,57 @@ def main():
         # Cria diretório de logs se não existir
         if not os.path.exists(".logs"):
             os.makedirs(".logs")
-            
-        search_on_tag("Felipe")
-        processos_area_download, relatorio_parcial = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
+        
+        # Define a etiqueta a ser pesquisada
+        etiqueta = "Felipe"
+        
+        # Busca processos pela etiqueta
+        search_on_tag(etiqueta)
+        
+        # Executa o download dos processos
+        relatorio_parcial = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
+        
+        # MODIFICAÇÃO: Pega TODOS os processos da etiqueta para verificar na área de download
+        processos_da_etiqueta = [
+            proc["numero"] for proc in relatorio_parcial["processosAnalisados"]
+            if proc["numero"] != "NÃO IDENTIFICADO"
+        ]
+        
+        print(f"\nTotal de processos da etiqueta '{etiqueta}' para verificar na área de download: {len(processos_da_etiqueta)}")
         
         # Aguarda um tempo para que os arquivos grandes sejam processados
-        if processos_area_download:
+        if processos_da_etiqueta:
             print(f"\nAguardando 30 segundos para processamento dos arquivos grandes...")
             time.sleep(30)
-        
-        resultado_final = download_requested_processes(processos_area_download, etiqueta="felipe", relatorio_parcial=relatorio_parcial)
-        
-        # Exibe resumo final
-        print("\n========== RESUMO FINAL ==========")
-        print(f"Total de processos analisados: {resultado_final['resumoFinal']['totalProcessosAnalisados']}")
-        print(f"Downloads diretos: {resultado_final['resumoFinal']['downloadsDiretos']}")
-        print(f"Baixados da área de download: {resultado_final['resumoFinal']['baixadosAreaDownload']}")
-        print(f"Ainda não disponíveis na área: {resultado_final['resumoFinal']['naoEncontradosAreaDownload']}")
-        print(f"Sem documento solicitado: {resultado_final['resumoFinal']['semDocumento']}")
-        print(f"Erros: {resultado_final['resumoFinal']['erros']}")
-        print(f"TOTAL DE SUCESSOS: {resultado_final['resumoFinal']['sucessoTotal']}")
-        print("==================================")
+            
+            # Chama a função modificada que verifica apenas processos da etiqueta
+            resultados_finais = automator.download_files_from_download_area(
+                process_numbers=processos_da_etiqueta,
+                tag_name=etiqueta,
+                partial_report=relatorio_parcial,
+                save_report=True
+            )
+            
+            # Exibe resumo final completo
+            print("\n========== RESUMO FINAL COMPLETO ==========")
+            print(f"Etiqueta: {etiqueta}")
+            print(f"Total de processos analisados: {resultados_finais['resumoFinal']['totalProcessosAnalisados']}")
+            print(f"Downloads diretos: {resultados_finais['resumoFinal']['downloadsDiretos']}")
+            print(f"Verificados na área de download: {resultados_finais['resumoFinal']['verificadosAreaDownload']}")
+            print(f"Baixados da área de download: {resultados_finais['resumoFinal']['baixadosAreaDownload']}")
+            print(f"Não encontrados na área de download: {resultados_finais['resumoFinal']['naoEncontradosAreaDownload']}")
+            print(f"Sem documento solicitado: {resultados_finais['resumoFinal']['semDocumento']}")
+            print(f"Erros: {resultados_finais['resumoFinal']['erros']}")
+            print(f"TOTAL DE SUCESSOS: {resultados_finais['resumoFinal']['sucessoTotal']}")
+            print("===========================================")
+        else:
+            # Se não houver processos, apenas exibe resumo básico
+            print("\n========== RESUMO FINAL ==========")
+            print(f"Total de processos analisados: {relatorio_parcial['resumo']['totalProcessos']}")
+            print(f"Downloads diretos: {relatorio_parcial['resumo']['downloadsDiretos']}")
+            print(f"Sem documento solicitado: {relatorio_parcial['resumo']['semDocumento']}")
+            print(f"Erros: {relatorio_parcial['resumo']['erros']}")
+            print("==================================")
         
     finally:
         automator.close()
