@@ -945,7 +945,6 @@ def main():
             print(
                 f"SUCESSO TOTAL: {resultados_finais['resumoFinal']['sucessoTotal']}")
             print("===========================================")
-            input("Pressione Enter para finalizar...")
         else:
             # Se não houver processos, apenas exibe resumo da timeline
             print("\n========== RESUMO FINAL TIMELINE ==========")

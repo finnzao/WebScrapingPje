@@ -55,17 +55,45 @@ class PjeConsultaAutomator:
         self,
         download_directory: str = None,
         prefs: dict = None,
-        wait_timeout: int = 50
+        wait_timeout: int = 50,
+        headless: bool = False
     ) -> tuple[webdriver.Chrome, WebDriverWait]:
+        """
+        Inicializa o driver do Chrome com configurações personalizadas.
+        
+        Args:
+            download_directory (str, optional): Diretório para downloads. 
+                Se None, usa pasta padrão em Downloads/processosBaixadosEtiqueta
+            prefs (dict, optional): Preferências customizadas do Chrome. 
+                Se None, usa preferências padrão
+            wait_timeout (int, optional): Tempo de espera para WebDriverWait. Padrão 50 segundos
+            headless (bool, optional): Se True, executa em modo headless (sem interface gráfica). 
+                Padrão False (navegador visível)
+        
+        Returns:
+            tuple: (driver, wait) - instâncias do Chrome WebDriver e WebDriverWait
+        """
         chrome_options = webdriver.ChromeOptions()
-
+    
+        # Configurar modo headless se solicitado
+        if headless:
+            chrome_options.add_argument("--headless")
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--window-size=1920,1080")
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            print("Modo HEADLESS ativado - navegador não será visível")
+    
         if not download_directory:
             user_home = os.path.expanduser("~")
             download_directory = os.path.join(user_home, "Downloads", "processosBaixadosEtiqueta")
-
+    
         os.makedirs(download_directory, exist_ok=True)
         print(f"Diretório de download configurado para: {download_directory}")
-
+    
         default_prefs = {
             "plugins.always_open_pdf_externally": True,
             "download.default_directory": download_directory,
@@ -73,13 +101,28 @@ class PjeConsultaAutomator:
             "download.directory_upgrade": True,
             "safebrowsing.enabled": True
         }
-
+    
+        # Em modo headless, adicionar configurações extras para garantir downloads
+        if headless:
+            default_prefs.update({
+                "download.extensions_to_open": "applications/pdf",
+                "profile.default_content_settings.popups": 0,
+                "profile.content_settings.exceptions.automatic_downloads.*.setting": 1
+            })
+    
         prefs = prefs or default_prefs
         chrome_options.add_experimental_option("prefs", prefs)
-
+    
         driver = webdriver.Chrome(options=chrome_options)
         wait = WebDriverWait(driver, wait_timeout)
-
+    
+        # Em modo headless, habilitar download via CDP (Chrome DevTools Protocol)
+        if headless:
+            driver.execute_cdp_cmd("Page.setDownloadBehavior", {
+                "behavior": "allow",
+                "downloadPath": download_directory
+            })
+    
         return driver, wait
 
     def _detect_redirect_loop(self):
