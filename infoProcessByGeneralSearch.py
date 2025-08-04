@@ -20,7 +20,21 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 driver = None
 wait = None
 
-def search_process(optionSearch):
+def search_process(numOrgaoJustica="0216",numTribunal="05", numeroOAB="", estadoOAB="", dataAutuacaoDe="", 
+                  dataAutuacaoAte="", Assunto="", classeJudicial="", nomeParte="",nomeAdvogado="",outrosNomesAlcunha=""):
+    """
+    Realiza busca de processos no PJE
+    
+    Args:
+        numOrgaoJustica (str): Número do órgão de justiça (padrão: "0216")
+        numeroOAB (str): Número da OAB
+        estadoOAB (str): Estado da OAB
+        dataAutuacaoDe (str): Data inicial de autuação
+        dataAutuacaoAte (str): Data final de autuação
+        Assunto (str): Assunto do processo
+        classeJudicial (str): Classe judicial
+        nomeParte (str): Nome da parte
+    """
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     icon_search_button = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas'))
@@ -31,52 +45,70 @@ def search_process(optionSearch):
     ElementoNumOrgaoJutica = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica'))
     )
-    ElementoNumOrgaoJutica.send_keys(optionSearch.get('numOrgaoJustica'))
+    ElementoNumOrgaoJutica.send_keys(numOrgaoJustica)
 
-    if optionSearch.get('estadoOAB'):
+    ElementoRespectivoTribunal = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:respectivoTribunal'))
+    )
+    ElementoRespectivoTribunal.send_keys(numTribunal)
+
+    if estadoOAB and numeroOAB:
         ElementoNumeroOAB = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB'))
         )
-        ElementoNumeroOAB.send_keys(optionSearch.get('numeroOAB'))
+        ElementoNumeroOAB.send_keys(numeroOAB)
         ElementoEstadosOAB = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:decorationDados:ufOABCombo'))
         )
         listaEstadosOAB = Select(ElementoEstadosOAB)
-        listaEstadosOAB.select_by_value(optionSearch.get('estadoOAB'))
+        listaEstadosOAB.select_by_value(estadoOAB)
 
-    if optionSearch.get('dataAutuacaoDe'):
+    if dataAutuacaoDe:
         ElementoDataAutuacao = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoInicioInputDate'))
         )
-        ElementoDataAutuacao.send_keys(optionSearch.get('dataAutuacaoDe'))
+        ElementoDataAutuacao.send_keys(dataAutuacaoDe)
 
-    if optionSearch.get('dataAutuacaoAte'):
+    if dataAutuacaoAte:
         ElementoDataAutuacaoAte = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoFimInputDate'))
         )
-        ElementoDataAutuacaoAte.send_keys(optionSearch.get('dataAutuacaoAte'))
+        ElementoDataAutuacaoAte.send_keys(dataAutuacaoAte)
 
-    if optionSearch.get('Assunto'):
+    if Assunto:
         ElementoAssunto = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:j_id236:assunto'))
         )
-        ElementoAssunto.send_keys(optionSearch.get('Assunto'))
+        ElementoAssunto.send_keys(Assunto)
 
     btnProcurarProcesso = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:searchProcessos'))
     )
     btnProcurarProcesso.click()
 
-    consulta_classe = wait.until(
-        EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
-    )
-    consulta_classe.send_keys(optionSearch.get('classeJudicial'))
+    if classeJudicial:
+        consulta_classe = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
+        )
+        consulta_classe.send_keys(classeJudicial)
+    
+    if nomeParte:
+        ElementonomeDaParte = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte'))
+        )
+        ElementonomeDaParte.send_keys(nomeParte)
 
-    ElementonomeDaParte = wait.until(
-        EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte'))
-    )
-    ElementonomeDaParte.send_keys(optionSearch.get('nomeParte'))
+    if outrosNomesAlcunha:
+        ElementonomeDaParte = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:j_id159:outrosNomesAlcunha'))
+        )
+        ElementonomeDaParte.send_keys(outrosNomesAlcunha)
 
+    if nomeAdvogado:
+        ElementonomeDaParte = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:j_id168:nomeAdvogado'))
+        )
+        ElementonomeDaParte.send_keys(nomeAdvogado)
     btnProcurarProcesso = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:searchProcessos'))
     )
@@ -231,15 +263,25 @@ def main():
     bot = PjeConsultaAutomator()
     driver = bot.driver
     wait = bot.wait
-    config = bot.loadConfig()
-    optionSearch = config["optionSearch"]
 
     bot.login(user, password)
     # bot.skip_token()
     bot.select_profile(profile)
 
-    search_process(optionSearch)
-    time.sleep(40)
+    search_process(
+        numOrgaoJustica="0216",
+        numTribunal="05",
+        numeroOAB="",
+        estadoOAB="",
+        dataAutuacaoDe="",
+        dataAutuacaoAte="",
+        Assunto="",
+        classeJudicial="",
+        nomeParte="ANTONIO CARLOS DA HORA",
+        nomeAdvogado=""
+    )
+    
+    time.sleep(30)
 
     process_data = collect_process_date()
     bot.close()
@@ -247,7 +289,7 @@ def main():
     logging.info(f"Dados dos processos coletados com sucesso")
     logging.info(f"Salvando dados json...")
     if process_data:
-        bot.save_to_json(process_data,filename="PesquisaGeral")
+        bot.save_to_json(process_data, filename="PesquisaGeral")
         save_data_to_excel(process_data)
     else:
         logging.info("Nenhum processo encontrado para salvar.")
