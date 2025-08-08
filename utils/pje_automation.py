@@ -135,8 +135,14 @@ class PjeConsultaAutomator:
             pass
         return False
 
-
     def login(self, user=user, password=password):
+        """
+        Realiza login no sistema PJE com a nova estrutura de formulário.
+        
+        Args:
+            user (str): CPF/CNPJ do usuário
+            password (str): Senha do usuário
+        """
         login_url = 'https://pje.tjba.jus.br/pje/login.seam'
         self.driver.get(login_url)
 
@@ -145,28 +151,70 @@ class PjeConsultaAutomator:
             self.driver.refresh()
             time.sleep(2)
 
-        self.wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ssoFrame')))
-        self.wait.until(EC.presence_of_element_located((By.ID, 'username'))).send_keys(user)
-        self.wait.until(EC.presence_of_element_located((By.ID, 'password'))).send_keys(password)
-        self.wait.until(EC.presence_of_element_located((By.ID, 'kc-login'))).click()
-
-        if self._detect_redirect_loop():
-            print("Redirecionamento em excesso detectado após login. Recarregando a página...")
-            self.driver.refresh()
-            time.sleep(2)
-
-        self.driver.switch_to.default_content()
-
         try:
-            WebDriverWait(self.driver, 6).until(
-                EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle'))
-            )
-            print("Login efetuado com sucesso.")
-        except TimeoutException:
-            print("Login falhou. Elemento de perfil não apareceu. Recarregando a página...")
-            self.driver.refresh()
-        time.sleep(2)
+            # Aguarda e preenche o campo de usuário (CPF/CNPJ)
+            username_field = self.wait.until(EC.presence_of_element_located((By.ID, 'username')))
+            username_field.clear()
+            username_field.send_keys(user)
+            print(f"CPF/CNPJ preenchido: {user}")
 
+            # Aguarda e preenche o campo de senha
+            password_field = self.wait.until(EC.presence_of_element_located((By.ID, 'password')))
+            password_field.clear()
+            password_field.send_keys(password)
+            print("Senha preenchida")
+
+            # Clica no botão de entrar
+            login_button = self.wait.until(EC.element_to_be_clickable((By.ID, 'btnEntrar')))
+            login_button.click()
+            print("Botão de login clicado")
+
+            # Aguarda o redirecionamento e verifica se o login foi bem-sucedido
+            if self._detect_redirect_loop():
+                print("Redirecionamento em excesso detectado após login. Recarregando a página...")
+                self.driver.refresh()
+                time.sleep(2)
+
+            # Verifica se o login foi bem-sucedido procurando pelo dropdown de perfil
+            try:
+                WebDriverWait(self.driver, 10).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle'))
+                )
+                print("Login efetuado com sucesso.")
+                return True
+                
+            except TimeoutException:
+                # Se não encontrar o dropdown, tenta verificar outros indicadores de sucesso
+                try:
+                    # Verifica se há algum iframe ou elemento que indique login bem-sucedido
+                    WebDriverWait(self.driver, 5).until(
+                        EC.any_of(
+                            EC.presence_of_element_located((By.ID, 'ngFrame')),
+                            EC.presence_of_element_located((By.CLASS_NAME, 'user-info')),
+                            EC.presence_of_element_located((By.ID, 'menuPrincipal'))
+                        )
+                    )
+                    print("Login efetuado com sucesso (verificação alternativa).")
+                    return True
+                    
+                except TimeoutException:
+                    print("Login falhou. Verifique as credenciais ou tente novamente.")
+                    
+                    # Verifica se há mensagem de erro na página
+                    try:
+                        error_message = self.driver.find_element(By.CSS_SELECTOR, '.alert-danger, .error-message, .login-error')
+                        print(f"Erro de login detectado: {error_message.text}")
+                    except:
+                        print("Não foi possível detectar mensagem de erro específica.")
+                    
+                    return False
+
+        except TimeoutException as e:
+            print(f"Timeout durante o login: {e}")
+            return False
+        except Exception as e:
+            print(f"Erro inesperado durante o login: {e}")
+            return False
 
     def skip_token(self):
         self.wait.until(EC.element_to_be_clickable(
@@ -185,8 +233,6 @@ class PjeConsultaAutomator:
         except Exception as e:
             print(f"[select_profile] Erro ao selecionar perfil '{profile}'. Continuando mesmo Assim")
             return
-
-
 
     def save_to_json(self, data, filename="ResultadoProcessosPesquisa"):
         os.makedirs("./docs", exist_ok=True)
@@ -232,7 +278,6 @@ class PjeConsultaAutomator:
         Returns:
             dict: Relatório completo com informações sobre os downloads realizados
         """
-
 
         # Prepara o relatório de resultados
         results_report = self._prepare_download_area_report(process_numbers, tag_name, partial_report)
@@ -443,4 +488,4 @@ class PjeConsultaAutomator:
         os.makedirs(directory, exist_ok=True)
         filepath = os.path.join(directory, filename)
         self.driver.save_screenshot(filepath)
-        print(f"Screenshot de exceção salvo em: {filepath}")  
+        print(f"Screenshot de exceção salvo em: {filepath}")
