@@ -8,6 +8,7 @@ from typing import TypedDict, NotRequired, Any, Dict
 import time
 import os
 import json
+import random
 
 # Tipos para o config.json
 class OptionSearch(TypedDict):
@@ -39,41 +40,80 @@ class PjeConsultaAutomator:
         driver: webdriver.Chrome = None,
         download_directory: str = None,
         custom_prefs: dict = None,
-        wait_timeout: int = 50
+        wait_timeout: int = 50,
+        clear_cache_on_start: bool = True,  # Novo parâmetro
+        auto_clear_cache: bool = True       # Limpeza automática
     ):
+        """
+        Inicializa o PjeConsultaAutomator com opções de limpeza de cache.
+        
+        Args:
+            clear_cache_on_start (bool): Limpa cache durante inicialização
+            auto_clear_cache (bool): Ativa limpeza automática de cache
+        """
         if driver is None:
             self.driver, self.wait = self.initialize_driver(
                 download_directory=download_directory,
                 prefs=custom_prefs,
-                wait_timeout=wait_timeout
+                wait_timeout=wait_timeout,
+                clear_cache=clear_cache_on_start
             )
         else:
             self.driver = driver
             self.wait = WebDriverWait(self.driver, wait_timeout)
+        
+        # Configuração de limpeza automática
+        self.auto_clear_cache = auto_clear_cache
+        
+        # Executa limpeza manual adicional se solicitado
+        if auto_clear_cache:
+            print("🚀 Executando limpeza automática de cache...")
+            self.clear_browser_cache()
+            time.sleep(2)  # Aguarda estabilização
 
     def initialize_driver(
         self,
         download_directory: str = None,
         prefs: dict = None,
         wait_timeout: int = 50,
-        headless: bool = False
+        headless: bool = False,
+        clear_cache: bool = True  # Novo parâmetro
     ) -> tuple[webdriver.Chrome, WebDriverWait]:
         """
         Inicializa o driver do Chrome com configurações personalizadas.
         
         Args:
-            download_directory (str, optional): Diretório para downloads. 
-                Se None, usa pasta padrão em Downloads/processosBaixadosEtiqueta
-            prefs (dict, optional): Preferências customizadas do Chrome. 
-                Se None, usa preferências padrão
-            wait_timeout (int, optional): Tempo de espera para WebDriverWait. Padrão 50 segundos
-            headless (bool, optional): Se True, executa em modo headless (sem interface gráfica). 
-                Padrão False (navegador visível)
-        
-        Returns:
-            tuple: (driver, wait) - instâncias do Chrome WebDriver e WebDriverWait
+            clear_cache (bool): Se True, limpa cache e dados do navegador a cada inicialização
         """
         chrome_options = webdriver.ChromeOptions()
+    
+        # Configurações para limpeza de cache
+        if clear_cache:
+            # Força o Chrome a iniciar com perfil temporário (limpo)
+            chrome_options.add_argument("--incognito")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            
+            # Limpa cache e dados de navegação
+            chrome_options.add_argument("--aggressive-cache-discard")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            
+            # Força recarregamento de recursos
+            chrome_options.add_argument("--disable-cache")
+            chrome_options.add_argument("--disable-application-cache")
+            chrome_options.add_argument("--disable-offline-load-stale-cache")
+            chrome_options.add_argument("--disk-cache-size=0")
+            chrome_options.add_argument("--media-cache-size=0")
+            
+            # Anti-detecção para evitar rate limiting
+            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            chrome_options.add_experimental_option('useAutomationExtension', False)
+            chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            
+            print("🧹 Cache será limpo automaticamente a cada inicialização")
     
         # Configurar modo headless se solicitado
         if headless:
@@ -82,9 +122,10 @@ class PjeConsultaAutomator:
             chrome_options.add_argument("--disable-dev-shm-usage")
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--window-size=1920,1080")
-            chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-            chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            chrome_options.add_experimental_option('useAutomationExtension', False)
+            if not clear_cache:  # Evita duplicar se já foi adicionado
+                chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+                chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+                chrome_options.add_experimental_option('useAutomationExtension', False)
             print("Modo HEADLESS ativado - navegador não será visível")
     
         if not download_directory:
@@ -102,7 +143,22 @@ class PjeConsultaAutomator:
             "safebrowsing.enabled": True
         }
     
-        # Em modo headless, adicionar configurações extras para garantir downloads
+        # Configurações adicionais para limpeza de cache via preferências
+        if clear_cache:
+            default_prefs.update({
+                "profile.default_content_setting_values.notifications": 2,
+                "profile.default_content_settings.popups": 0,
+                "profile.cookie_controls_mode": 0,
+                # Limpa dados ao fechar
+                "profile.exit_type": "normal",
+                "profile.exited_cleanly": True,
+                # Configurações para evitar detecção
+                "profile.default_content_setting_values.plugins": 1,
+                "profile.content_settings.plugin_whitelist.adobe-flash-player": 1,
+                "profile.content_settings.exceptions.plugins.*,*.per_resource.adobe-flash-player": 1
+            })
+    
+        # Em modo headless, adicionar configurações extras
         if headless:
             default_prefs.update({
                 "download.extensions_to_open": "applications/pdf",
@@ -116,7 +172,33 @@ class PjeConsultaAutomator:
         driver = webdriver.Chrome(options=chrome_options)
         wait = WebDriverWait(driver, wait_timeout)
     
-        # Em modo headless, habilitar download via CDP (Chrome DevTools Protocol)
+        # Limpeza adicional via DevTools após inicialização
+        if clear_cache:
+            try:
+                # Limpa cache via Chrome DevTools Protocol
+                driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+                driver.execute_cdp_cmd("Network.clearBrowserCookies", {})
+                
+                # Remove indicadores de automação
+                driver.execute_script("""
+                    Object.defineProperty(navigator, 'webdriver', {
+                        get: () => undefined,
+                    });
+                    
+                    window.chrome = {
+                        runtime: {},
+                    };
+                    
+                    Object.defineProperty(navigator, 'plugins', {
+                        get: () => [1, 2, 3, 4, 5],
+                    });
+                """)
+                
+                print("✅ Cache e cookies limpos via DevTools")
+            except Exception as e:
+                print(f"⚠️ Aviso: Não foi possível limpar cache via DevTools: {e}")
+    
+        # Em modo headless, habilitar download via CDP
         if headless:
             driver.execute_cdp_cmd("Page.setDownloadBehavior", {
                 "behavior": "allow",
@@ -124,6 +206,128 @@ class PjeConsultaAutomator:
             })
     
         return driver, wait
+
+    def clear_browser_cache(self):
+        """
+        Limpa cache, cookies e dados de navegação manualmente.
+        Chame este método antes do login para garantir estado limpo.
+        """
+        try:
+            print("🧹 Iniciando limpeza manual de cache...")
+            
+            # Método 1: Via Chrome DevTools Protocol (mais eficaz)
+            try:
+                self.driver.execute_cdp_cmd("Network.clearBrowserCache", {})
+                self.driver.execute_cdp_cmd("Network.clearBrowserCookies", {})
+                self.driver.execute_cdp_cmd("Storage.clearDataForOrigin", {
+                    "origin": "*",
+                    "storageTypes": "all"
+                })
+                print("✅ Cache limpo via DevTools Protocol")
+            except Exception as e:
+                print(f"⚠️ Falha na limpeza via DevTools: {e}")
+            
+            # Método 2: Via JavaScript (backup)
+            try:
+                # Limpa localStorage e sessionStorage
+                self.driver.execute_script("window.localStorage.clear();")
+                self.driver.execute_script("window.sessionStorage.clear();")
+                
+                # Limpa cache de aplicação se disponível
+                self.driver.execute_script("""
+                    if ('caches' in window) {
+                        caches.keys().then(function(names) {
+                            names.forEach(function(name) {
+                                caches.delete(name);
+                            });
+                        });
+                    }
+                """)
+                print("✅ Storage local limpo via JavaScript")
+            except Exception as e:
+                print(f"⚠️ Falha na limpeza via JavaScript: {e}")
+                
+            # Método 3: Navegação para about:blank e reload
+            try:
+                self.driver.get("about:blank")
+                time.sleep(1)
+                print("✅ Navegador resetado para página em branco")
+            except Exception as e:
+                print(f"⚠️ Falha ao resetar navegador: {e}")
+                
+            print("🎯 Limpeza de cache concluída")
+            
+        except Exception as e:
+            print(f"❌ Erro durante limpeza de cache: {e}")
+
+    def clear_cache_and_restart_session(self):
+        """
+        Limpa cache e reinicia a sessão do navegador completamente.
+        Use para casos onde a limpeza simples não resolve.
+        """
+        try:
+            print("🔄 Reiniciando sessão completa do navegador...")
+            
+            # Salva configurações atuais
+            current_url = self.driver.current_url if hasattr(self, 'driver') else None
+            
+            # Fecha o navegador atual
+            if hasattr(self, 'driver'):
+                self.driver.quit()
+                time.sleep(2)
+            
+            # Reinicializa com cache limpo
+            self.driver, self.wait = self.initialize_driver(clear_cache=True)
+            
+            print("✅ Sessão reiniciada com cache limpo")
+            
+            # Retorna à URL anterior se necessário
+            if current_url and current_url != "about:blank":
+                self.driver.get(current_url)
+                
+        except Exception as e:
+            print(f"❌ Erro ao reiniciar sessão: {e}")
+            # Tenta inicializar driver básico em caso de erro
+            self.driver, self.wait = self.initialize_driver()
+
+    def wait_with_random_delay(self, min_seconds=2, max_seconds=5):
+        """
+        Adiciona delay aleatório para evitar detecção de bot.
+        """
+        delay = random.uniform(min_seconds, max_seconds)
+        print(f"⏱️ Aguardando {delay:.2f} segundos...")
+        time.sleep(delay)
+
+    def add_rate_limit_protection(self):
+        """
+        Adiciona proteções contra rate limiting.
+        """
+        try:
+            # Headers para parecer mais humano
+            self.driver.execute_cdp_cmd("Network.setUserAgentOverride", {
+                "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            })
+            
+            # Simula comportamento humano
+            self.driver.execute_script("""
+                // Remove indicadores de automação
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+                
+                // Remove propriedades do Chrome automation
+                window.chrome = {
+                    runtime: {},
+                };
+                
+                // Remove propriedades do WebDriver
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+            """)
+            print("🛡️ Proteções anti-detecção ativadas")
+        except Exception as e:
+            print(f"⚠️ Falha ao aplicar proteções: {e}")
 
     def _detect_redirect_loop(self):
         time.sleep(3)
@@ -143,27 +347,36 @@ class PjeConsultaAutomator:
             user (str): CPF/CNPJ do usuário
             password (str): Senha do usuário
         """
-        login_url = 'https://pje.tjba.jus.br/pje/login.seam'
-        self.driver.get(login_url)
-
-        if self._detect_redirect_loop():
-            print("Redirecionamento em excesso detectado. Recarregando a página...")
-            self.driver.refresh()
-            time.sleep(2)
-
         try:
+            # Aplica proteções antes do login
+            self.add_rate_limit_protection()
+            self.wait_with_random_delay(2, 4)
+            
+            login_url = 'https://pje.tjba.jus.br/pje/login.seam'
+            self.driver.get(login_url)
+
+            if self._detect_redirect_loop():
+                print("Redirecionamento em excesso detectado. Recarregando a página...")
+                self.driver.refresh()
+                time.sleep(2)
+
             # Aguarda e preenche o campo de usuário (CPF/CNPJ)
             username_field = self.wait.until(EC.presence_of_element_located((By.ID, 'username')))
             username_field.clear()
+            self.wait_with_random_delay(0.5, 1.5)  # Delay humano
             username_field.send_keys(user)
             print(f"CPF/CNPJ preenchido: {user}")
 
             # Aguarda e preenche o campo de senha
             password_field = self.wait.until(EC.presence_of_element_located((By.ID, 'password')))
             password_field.clear()
+            self.wait_with_random_delay(0.5, 1.5)  # Delay humano
             password_field.send_keys(password)
             print("Senha preenchida")
 
+            # Aguarda antes de clicar no botão
+            self.wait_with_random_delay(1, 2)
+            
             # Clica no botão de entrar
             login_button = self.wait.until(EC.element_to_be_clickable((By.ID, 'btnEntrar')))
             login_button.click()
@@ -214,6 +427,11 @@ class PjeConsultaAutomator:
             return False
         except Exception as e:
             print(f"Erro inesperado durante o login: {e}")
+            # Se erro contém 429, tenta reiniciar sessão
+            if "429" in str(e) or "rate limit" in str(e).lower():
+                print("🔄 Erro de rate limit detectado. Reiniciando sessão...")
+                self.clear_cache_and_restart_session()
+                time.sleep(10)
             return False
 
     def skip_token(self):
@@ -222,16 +440,22 @@ class PjeConsultaAutomator:
 
     def select_profile(self, profile):
         try:
+            # Adiciona delay antes de selecionar perfil
+            self.wait_with_random_delay(2, 4)
+            
             dropdown = self.wait.until(EC.element_to_be_clickable(
                 (By.CLASS_NAME, "dropdown-toggle")))
             dropdown.click()
+            
+            self.wait_with_random_delay(1, 2)
+            
             opt = self.wait.until(EC.element_to_be_clickable(
                 (By.XPATH, f"//a[contains(text(),'{profile}')]")))
             self.driver.execute_script("arguments[0].click();", opt)
             print(f"[OK] Perfil '{profile}' selecionado")
 
         except Exception as e:
-            print(f"[select_profile] Erro ao selecionar perfil '{profile}'. Continuando mesmo Assim")
+            print(f"[select_profile] Erro ao selecionar perfil '{profile}'. Continuando mesmo assim")
             return
 
     def save_to_json(self, data, filename="ResultadoProcessosPesquisa"):
@@ -263,7 +487,14 @@ class PjeConsultaAutomator:
         print("Arquivo config.json atualizado com sucesso.")
 
     def close(self):
-        self.driver.quit()
+        try:
+            # Limpeza final antes de fechar
+            if self.auto_clear_cache:
+                print("🧹 Limpeza final antes de fechar...")
+                self.clear_browser_cache()
+            self.driver.quit()
+        except Exception as e:
+            print(f"Erro ao fechar navegador: {e}")
 
     def download_files_from_download_area(self, process_numbers, tag_name=None, partial_report=None, save_report=True):
         """
@@ -291,6 +522,11 @@ class PjeConsultaAutomator:
             return results_report
 
         try:
+            # Limpa cache antes de acessar área de download
+            if self.auto_clear_cache:
+                self.clear_browser_cache()
+                self.wait_with_random_delay(2, 4)
+
             # Acessa a página de downloads
             self._log_info(f"\nAcessando área de download para verificar {len(process_numbers)} processos...")
             self.driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
@@ -315,6 +551,10 @@ class PjeConsultaAutomator:
 
         except Exception as e:
             self._log_error(f"Erro ao acessar área de download: {e}")
+            # Se erro contém 429, tenta reiniciar sessão
+            if "429" in str(e) or "rate limit" in str(e).lower():
+                print("🔄 Erro de rate limit na área de download. Aguardando...")
+                time.sleep(30)
             self._save_exception_screenshot("download_area_exception.png")
 
         # Atualiza resumo final
@@ -389,6 +629,9 @@ class PjeConsultaAutomator:
                     else:
                         self._log_info(f"Processo {process_number} encontrado. Baixando...")
 
+                    # Adiciona delay antes do download
+                    self.wait_with_random_delay(1, 3)
+                    
                     if self._download_process_from_row(row, process_number):
                         downloaded_numbers.add(process_number)
                         results_report["areaDownload"]["processosBaixados"].append(process_number)
@@ -405,6 +648,7 @@ class PjeConsultaAutomator:
         try:
             download_button = row.find_element(By.XPATH, "./td[last()]//button")
             self.driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
+            self.wait_with_random_delay(0.5, 1.5)  # Delay humano
             download_button.click()
             time.sleep(5)  # Aguarda o download iniciar
             return True

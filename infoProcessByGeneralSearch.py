@@ -7,6 +7,7 @@ import logging
 from dotenv import load_dotenv
 
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -21,16 +22,16 @@ logging.basicConfig(level=logging.INFO,
 driver = None
 wait = None
 
-
-def search_process(numOrgaoJustica="0216", numTribunal="05", processoAno='', numeroOAB="", estadoOAB="", dataAutuacaoDe="",
+def search_process(numOrgaoJustica="", numTribunal="", processoAno='', numeroOAB="", estadoOAB="", dataAutuacaoDe="",
                    dataAutuacaoAte="", Assunto="", classeJudicial="", nomeParte="", nomeAdvogado="",
                    outrosNomesAlcunha="", orgaoJulgadorCombo="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL"):
     """
-    Realiza busca de processos no PJE
+    Realiza busca de processos no PJE com preenchimento seguro dos campos
 
     Args:
-        numOrgaoJustica (str): Número do órgão de justiça (padrão: "0216")
-        numTribunal (str): Número do tribunal (padrão: "05")
+        numOrgaoJustica (str): Número do órgão de justiça
+        numTribunal (str): Número do tribunal
+        processoAno (str): Ano do processo
         numeroOAB (str): Número da OAB
         estadoOAB (str): Estado da OAB
         dataAutuacaoDe (str): Data inicial de autuação
@@ -40,139 +41,309 @@ def search_process(numOrgaoJustica="0216", numTribunal="05", processoAno='', num
         nomeParte (str): Nome da parte
         nomeAdvogado (str): Nome do advogado
         outrosNomesAlcunha (str): Outros nomes/alcunha
-        orgaoJulgadorCombo (str): Órgão julgador (padrão: "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL")
+        orgaoJulgadorCombo (str): Órgão julgador
     """
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-    icon_search_button = wait.until(
-        EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas'))
-    )
-    icon_search_button.click()
-    wait.until(EC.frame_to_be_available_and_switch_to_it(
-        (By.ID, 'frameConsultaProcessual')))
-
-    ElementoNumOrgaoJutica = wait.until(
-        EC.presence_of_element_located(
-            (By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica'))
-    )
-    ElementoNumOrgaoJutica.send_keys(numOrgaoJustica)
-
-    ElementoRespectivoTribunal = wait.until(
-        EC.presence_of_element_located(
-            (By.ID, 'fPP:numeroProcesso:respectivoTribunal'))
-    )
-    ElementoRespectivoTribunal.send_keys(numTribunal)
-
-    # Seleção do Órgão Julgador
-    if orgaoJulgadorCombo:
+    
+    def safe_fill_field(element, value, field_name="campo", clear_first=True, use_js=False):
+        """
+        Preenche um campo de forma segura com verificação
+        
+        Args:
+            element: Elemento do campo
+            value: Valor a ser preenchido
+            field_name: Nome do campo para logs
+            clear_first: Se deve limpar o campo primeiro
+            use_js: Se deve usar JavaScript para preenchimento
+        """
         try:
-            ElementoOrgaoJulgador = wait.until(
-                EC.presence_of_element_located(
-                    (By.ID, 'fPP:orgaoJulgadorComboDecoration:orgaoJulgadorCombo'))
-            )
-            listaOrgaoJulgador = Select(ElementoOrgaoJulgador)
-
-            # Tenta selecionar por texto visível primeiro
-            try:
-                listaOrgaoJulgador.select_by_visible_text(orgaoJulgadorCombo)
-                logging.info(
-                    f"Órgão julgador selecionado por texto: {orgaoJulgadorCombo}")
-            except:
-                # Se não encontrar por texto, tenta selecionar por valor
-                try:
-                    listaOrgaoJulgador.select_by_value(orgaoJulgadorCombo)
-                    logging.info(
-                        f"Órgão julgador selecionado por valor: {orgaoJulgadorCombo}")
-                except:
-                    # Se nenhuma das opções funcionar, tenta buscar por texto parcial
-                    options = listaOrgaoJulgador.options
-                    option_found = False
-                    for option in options:
-                        if orgaoJulgadorCombo.upper() in option.text.upper():
-                            listaOrgaoJulgador.select_by_visible_text(
-                                option.text)
-                            logging.info(
-                                f"Órgão julgador selecionado por texto parcial: {option.text}")
-                            option_found = True
-                            break
-
-                    if not option_found:
-                        logging.warning(
-                            f"Não foi possível selecionar o órgão julgador: {orgaoJulgadorCombo}")
-
+            if not value:
+                return True
+                
+            # Aguarda o elemento estar interagível
+            wait.until(EC.element_to_be_clickable(element))
+            
+            # Move para o elemento e clica nele
+            driver.execute_script("arguments[0].scrollIntoView(true);", element)
+            time.sleep(0.5)
+            element.click()
+            time.sleep(0.3)
+            
+            # Limpa o campo se solicitado
+            if clear_first:
+                if use_js:
+                    driver.execute_script("arguments[0].value = '';", element)
+                else:
+                    element.clear()
+                    # Usa Ctrl+A e Delete como backup
+                    element.send_keys(Keys.CONTROL + "a")
+                    element.send_keys(Keys.DELETE)
+                time.sleep(0.3)
+            
+            # Preenche o campo
+            if use_js:
+                driver.execute_script(f"arguments[0].value = '{value}';", element)
+                # Dispara eventos para garantir que o valor seja registrado
+                driver.execute_script("""
+                    var element = arguments[0];
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                """, element)
+            else:
+                element.send_keys(value)
+            
+            time.sleep(0.5)
+            
+            # Verifica se o valor foi preenchido corretamente
+            actual_value = element.get_attribute('value')
+            if actual_value == value:
+                logging.info(f"✅ {field_name} preenchido corretamente: {value}")
+                return True
+            else:
+                logging.warning(f"⚠️ {field_name} - Valor esperado: {value}, Valor atual: {actual_value}")
+                
+                # Tenta novamente com JavaScript se necessário
+                if not use_js:
+                    logging.info(f"🔄 Tentando preencher {field_name} novamente com JavaScript...")
+                    return safe_fill_field(element, value, field_name, clear_first, use_js=True)
+                return False
+                
         except Exception as e:
-            logging.error(f"Erro ao selecionar órgão julgador: {e}")
-
-    if estadoOAB and numeroOAB:
-        ElementoNumeroOAB = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:decorationDados:numeroOAB'))
+            logging.error(f"❌ Erro ao preencher {field_name}: {e}")
+            return False
+    
+    try:
+        # Aguarda e entra no frame principal
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        logging.info("🔍 Dentro do frame principal")
+        
+        # Clica no botão de busca
+        icon_search_button = wait.until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas'))
         )
-        ElementoNumeroOAB.send_keys(numeroOAB)
-        ElementoEstadosOAB = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:decorationDados:ufOABCombo'))
+        icon_search_button.click()
+        logging.info("🔍 Botão de consulta processual clicado")
+        
+        # Entra no frame de consulta
+        wait.until(EC.frame_to_be_available_and_switch_to_it(
+            (By.ID, 'frameConsultaProcessual')))
+        logging.info("🔍 Dentro do frame de consulta processual")
+        
+        # Aguarda o formulário carregar completamente
+        wait.until(EC.presence_of_element_located((By.ID, 'fPP:searchProcessos')))
+        time.sleep(2)  # Aguarda estabilização do formulário
+        
+        # Preenche Número do Órgão de Justiça
+        if numOrgaoJustica:
+            elemento_orgao = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica'))
+            )
+            safe_fill_field(elemento_orgao, numOrgaoJustica, "Número do Órgão de Justiça")
+        
+        # Preenche Respectivo Tribunal
+        if numTribunal:
+            elemento_tribunal = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:numeroProcesso:respectivoTribunal'))
+            )
+            safe_fill_field(elemento_tribunal, numTribunal, "Número do Tribunal")
+        
+        # Preenche ANO DO PROCESSO - CRÍTICO
+        if processoAno:
+            logging.info(f"🗓️ Preenchendo ano do processo: {processoAno}")
+            elemento_ano = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:numeroProcesso:Ano'))
+            )
+            
+            # Método especial para o campo ano (mais crítico)
+            max_attempts = 3
+            success = False
+            
+            for attempt in range(max_attempts):
+                logging.info(f"🗓️ Tentativa {attempt + 1} de preenchimento do ano...")
+                
+                # Move para o elemento e garante foco
+                driver.execute_script("arguments[0].scrollIntoView(true);", elemento_ano)
+                time.sleep(0.5)
+                
+                # Clica no campo várias vezes para garantir foco
+                elemento_ano.click()
+                time.sleep(0.3)
+                elemento_ano.click()
+                time.sleep(0.3)
+                
+                # Limpa o campo completamente
+                driver.execute_script("arguments[0].value = '';", elemento_ano)
+                elemento_ano.send_keys(Keys.CONTROL + "a")
+                elemento_ano.send_keys(Keys.DELETE)
+                time.sleep(0.5)
+                
+                # Preenche caractere por caractere com delay
+                for char in processoAno:
+                    elemento_ano.send_keys(char)
+                    time.sleep(0.1)  # Delay entre caracteres
+                
+                time.sleep(0.5)
+                
+                # Verifica se preencheu corretamente
+                valor_atual = elemento_ano.get_attribute('value')
+                if valor_atual == processoAno:
+                    logging.info(f"✅ Ano preenchido corretamente: {processoAno}")
+                    success = True
+                    break
+                else:
+                    logging.warning(f"⚠️ Tentativa {attempt + 1} falhou. Esperado: {processoAno}, Atual: {valor_atual}")
+                    time.sleep(1)
+            
+            if not success:
+                # Última tentativa com JavaScript puro
+                logging.info("🔄 Última tentativa com JavaScript...")
+                driver.execute_script(f"arguments[0].value = '{processoAno}';", elemento_ano)
+                driver.execute_script("""
+                    var element = arguments[0];
+                    element.focus();
+                    element.dispatchEvent(new Event('input', { bubbles: true }));
+                    element.dispatchEvent(new Event('change', { bubbles: true }));
+                    element.blur();
+                """, elemento_ano)
+                time.sleep(1)
+                
+                valor_final = elemento_ano.get_attribute('value')
+                if valor_final == processoAno:
+                    logging.info(f"✅ Ano preenchido com JavaScript: {processoAno}")
+                else:
+                    logging.error(f"❌ FALHA CRÍTICA: Não foi possível preencher o ano corretamente!")
+        
+        # Seleção do Órgão Julgador
+        if orgaoJulgadorCombo:
+            try:
+                elemento_orgao_julgador = wait.until(
+                    EC.presence_of_element_located(
+                        (By.ID, 'fPP:orgaoJulgadorComboDecoration:orgaoJulgadorCombo'))
+                )
+                lista_orgao_julgador = Select(elemento_orgao_julgador)
+                
+                # Tenta selecionar por texto visível primeiro
+                try:
+                    lista_orgao_julgador.select_by_visible_text(orgaoJulgadorCombo)
+                    logging.info(f"✅ Órgão julgador selecionado por texto: {orgaoJulgadorCombo}")
+                except:
+                    # Se não encontrar por texto, tenta selecionar por valor
+                    try:
+                        lista_orgao_julgador.select_by_value(orgaoJulgadorCombo)
+                        logging.info(f"✅ Órgão julgador selecionado por valor: {orgaoJulgadorCombo}")
+                    except:
+                        # Se nenhuma das opções funcionar, tenta buscar por texto parcial
+                        options = lista_orgao_julgador.options
+                        option_found = False
+                        for option in options:
+                            if orgaoJulgadorCombo.upper() in option.text.upper():
+                                lista_orgao_julgador.select_by_visible_text(option.text)
+                                logging.info(f"✅ Órgão julgador selecionado por texto parcial: {option.text}")
+                                option_found = True
+                                break
+                        
+                        if not option_found:
+                            logging.warning(f"⚠️ Não foi possível selecionar o órgão julgador: {orgaoJulgadorCombo}")
+            
+            except Exception as e:
+                logging.error(f"❌ Erro ao selecionar órgão julgador: {e}")
+        
+        # Preenche dados OAB se fornecidos
+        if estadoOAB and numeroOAB:
+            elemento_numero_oab = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:decorationDados:numeroOAB'))
+            )
+            safe_fill_field(elemento_numero_oab, numeroOAB, "Número OAB")
+            
+            elemento_estado_oab = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:decorationDados:ufOABCombo'))
+            )
+            lista_estados_oab = Select(elemento_estado_oab)
+            lista_estados_oab.select_by_value(estadoOAB)
+            logging.info(f"✅ Estado OAB selecionado: {estadoOAB}")
+        
+        # Preenche data de autuação inicial
+        if dataAutuacaoDe:
+            elemento_data_inicio = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoInicioInputDate'))
+            )
+            safe_fill_field(elemento_data_inicio, dataAutuacaoDe, "Data de Autuação (De)")
+        
+        # Preenche data de autuação final
+        if dataAutuacaoAte:
+            elemento_data_fim = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoFimInputDate'))
+            )
+            safe_fill_field(elemento_data_fim, dataAutuacaoAte, "Data de Autuação (Até)")
+        
+        # Preenche Assunto
+        if Assunto:
+            elemento_assunto = wait.until(
+                EC.presence_of_element_located((By.ID, 'fPP:j_id237:assunto'))
+            )
+            safe_fill_field(elemento_assunto, Assunto, "Assunto")
+        
+        # Preenche Classe Judicial
+        if classeJudicial:
+            elemento_classe = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:j_id246:classeJudicial'))
+            )
+            safe_fill_field(elemento_classe, classeJudicial, "Classe Judicial")
+        
+        # Preenche Nome da Parte
+        if nomeParte:
+            elemento_nome_parte = wait.until(
+                EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte'))
+            )
+            safe_fill_field(elemento_nome_parte, nomeParte, "Nome da Parte")
+        
+        # Preenche Outros Nomes/Alcunha
+        if outrosNomesAlcunha:
+            elemento_alcunha = wait.until(
+                EC.presence_of_element_located(
+                    (By.ID, 'fPP:j_id159:outrosNomesAlcunha'))
+            )
+            safe_fill_field(elemento_alcunha, outrosNomesAlcunha, "Outros Nomes/Alcunha")
+        
+        # Preenche Nome do Advogado
+        if nomeAdvogado:
+            elemento_advogado = wait.until(
+                EC.presence_of_element_located((By.ID, 'fPP:j_id168:nomeAdvogado'))
+            )
+            safe_fill_field(elemento_advogado, nomeAdvogado, "Nome do Advogado")
+        
+        # Aguarda antes de clicar no botão de busca
+        time.sleep(2)
+        
+        # Clica no botão de buscar processos
+        btn_procurar = wait.until(
+            EC.element_to_be_clickable((By.ID, 'fPP:searchProcessos'))
         )
-        listaEstadosOAB = Select(ElementoEstadosOAB)
-        listaEstadosOAB.select_by_value(estadoOAB)
-
-    if dataAutuacaoDe:
-        ElementoDataAutuacao = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoInicioInputDate'))
-        )
-        ElementoDataAutuacao.send_keys(dataAutuacaoDe)
-
-    if processoAno:
-        ElementoProcessoAno = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:numeroProcesso:Ano'))
-        )
-        ElementoProcessoAno.send_keys(processoAno)
-
-    if dataAutuacaoAte:
-        ElementoDataAutuacaoAte = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoFimInputDate'))
-        )
-        ElementoDataAutuacaoAte.send_keys(dataAutuacaoAte)
-
-    if Assunto:
-        ElementoAssunto = wait.until(
-            EC.presence_of_element_located((By.ID, 'fPP:j_id237:assunto'))
-        )
-        ElementoAssunto.send_keys(Assunto)
-
-    if classeJudicial:
-        consulta_classe = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:j_id246:classeJudicial'))
-        )
-        consulta_classe.send_keys(classeJudicial)
-
-    if nomeParte:
-        ElementonomeDaParte = wait.until(
-            EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte'))
-        )
-        ElementonomeDaParte.send_keys(nomeParte)
-
-    if outrosNomesAlcunha:
-        ElementonomeDaParte = wait.until(
-            EC.presence_of_element_located(
-                (By.ID, 'fPP:j_id159:outrosNomesAlcunha'))
-        )
-        ElementonomeDaParte.send_keys(outrosNomesAlcunha)
-
-    if nomeAdvogado:
-        ElementonomeDaParte = wait.until(
-            EC.presence_of_element_located((By.ID, 'fPP:j_id168:nomeAdvogado'))
-        )
-        ElementonomeDaParte.send_keys(nomeAdvogado)
-
-    btnProcurarProcesso = wait.until(
-        EC.presence_of_element_located((By.ID, 'fPP:searchProcessos'))
-    )
-    btnProcurarProcesso.click()
+        
+        # Scroll para o botão e clica
+        driver.execute_script("arguments[0].scrollIntoView(true);", btn_procurar)
+        time.sleep(1)
+        btn_procurar.click()
+        
+        logging.info("🔍 Busca de processos iniciada com sucesso!")
+        
+    except Exception as e:
+        logging.error(f"❌ Erro durante a busca de processos: {e}")
+        # Salva screenshot para debug
+        try:
+            driver.save_screenshot("error_search_process.png")
+            logging.info("📸 Screenshot de erro salvo: error_search_process.png")
+        except:
+            pass
+        raise e
 
 
 def get_total_pages():
@@ -329,45 +500,67 @@ def main():
 
     load_dotenv()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
-    # profile = os.getenv("PROFILE")
     profile = "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor"
-    bot = PjeConsultaAutomator()
+
+    # Inicializa bot com limpeza automática de cache
+    bot = PjeConsultaAutomator(
+        clear_cache_on_start=True,  # Limpa cache na inicialização
+        auto_clear_cache=True       # Ativa limpeza automática
+    )
     driver = bot.driver
     wait = bot.wait
 
-    bot.login(user, password)
-    # bot.skip_token()
-    bot.select_profile(profile)
-    ano = "2016"
-    time.sleep(5)
-    search_process(
-        numOrgaoJustica="0216",
-        numTribunal="05",
-        processoAno=ano,
-        numeroOAB="",
-        estadoOAB="",
-        dataAutuacaoDe="",
-        dataAutuacaoAte="",
-        Assunto="",
-        classeJudicial="",
-        nomeParte="",
-        nomeAdvogado="LUIZ CESAR DONATO DA CRUZ",
-        orgaoJulgadorCombo="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL"
-    )
+    try:
+        # Limpeza adicional antes do login (opcional, mas recomendado)
+        print("🔧 Executando limpeza final antes do login...")
+        bot.clear_browser_cache()
+        time.sleep(3)
 
-    time.sleep(40)
+        # Procede com login e demais operações
+        bot.login(user, password)
+        bot.select_profile(profile)
 
-    process_data = collect_process_date()
-    bot.close()
+        ano = "1996"
 
-    logging.info(f"Dados dos processos coletados com sucesso")
-    logging.info(f"Salvando dados json...")
-    filename = f'Processos{ano}LCDC'
-    if process_data:
-        bot.save_to_json(process_data, filename)
-        save_data_to_excel(process_data, f'./docs/{filename}.xlsx')
-    else:
-        logging.info("Nenhum processo encontrado para salvar.")
+        search_process(
+            numOrgaoJustica="",
+            numTribunal="", 
+            processoAno="",
+            numeroOAB="",
+            estadoOAB="",
+            dataAutuacaoDe="01/01/1981",
+            dataAutuacaoAte="31/12/2004",
+            Assunto="",
+            classeJudicial="",
+            nomeParte="",
+            nomeAdvogado="LUIZ CESAR DONATO DA CRUZ",
+            orgaoJulgadorCombo="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL"
+        )
+
+        time.sleep(20)
+
+        process_data = collect_process_date()
+
+        logging.info(f"Dados dos processos coletados com sucesso")
+        logging.info(f"Salvando dados json...")
+        filename = f'Processos{ano}LCDC'
+
+        if process_data:
+            bot.save_to_json(process_data, filename)
+            save_data_to_excel(process_data, f'./docs/{filename}.xlsx')
+        else:
+            logging.info("Nenhum processo encontrado para salvar.")
+
+    except Exception as e:
+        logging.error(f"Erro durante execução: {e}")
+        
+        if "429" in str(e) or "rate limit" in str(e).lower():
+            print("🔄 Erro de rate limit detectado. Reiniciando sessão...")
+            bot.clear_cache_and_restart_session()
+            time.sleep(10)
+
+    finally:
+        bot.close()
 
 
 if __name__ == "__main__":
