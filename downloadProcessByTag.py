@@ -606,12 +606,12 @@ def iniciar_automacao():
     # Pegamos usuário/senha/perfil do .env (ou do pje_automation)
     user = os.getenv("USER")
     password = os.getenv("PASSWORD")
-    profile = os.getenv("PROFILE")
+    profile = "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor"
 
     # Chamamos as funções do pje_automation
     automator.login(user, password)
     # automator.skip_token()
-    #automator.select_profile(profile="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Diretor de Secretaria")
+    automator.select_profile(profile)
 
     print("Automação inicializada com sucesso!")
     return automator
@@ -630,7 +630,7 @@ def main():
         search_on_tag(etiqueta)
         
         # Executa o download dos processos
-        relatorio_parcial = downloadProcessOnTagSearch(typeDocument="Petição Inicial")
+        relatorio_parcial = downloadProcessOnTagSearch(typeDocument="Selecione")
         
         # MODIFICAÇÃO: Pega TODOS os processos da etiqueta para verificar na área de download
         processos_da_etiqueta = [

@@ -4,7 +4,6 @@ sshCLi.pub
 /docs/
 /__pycache__/
 *.html
-*.png
 *.jpg
 *.log
 *.xlsx
@@ -16,3 +15,4 @@ config.json
 .logs/*
 logs/*
 documentos_capturados/*
+.chrome_profile
