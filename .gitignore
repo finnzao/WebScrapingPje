@@ -16,3 +16,5 @@ config.json
 logs/*
 documentos_capturados/*
 .chrome_profile
+.session
+downloads
