@@ -309,27 +309,6 @@ class PJEAutomacaoUnificada:
     
     # ==================== UTILITÁRIOS ====================
     
-    def _get_api_headers(self) -> Dict[str, str]:
-        """
-        Retorna headers necessarios para requisicoes a API REST do PJe.
-        O PJe usa headers customizados X-pje-* ao inves de cookies padrao.
-        """
-        headers = {
-            "Content-Type": "application/json",
-            "X-pje-legacy-app": "pje-tjba-1g",
-        }
-        
-        # Monta X-pje-cookies a partir dos cookies da sessao
-        cookies_str = "; ".join([f"{c.name}={c.value}" for c in self.session.cookies])
-        if cookies_str:
-            headers["X-pje-cookies"] = cookies_str
-        
-        # Adiciona localizacao do usuario se disponivel
-        if self.usuario and self.usuario.id_usuario_localizacao:
-            headers["X-pje-usuario-localizacao"] = str(self.usuario.id_usuario_localizacao)
-        
-        return headers
-    
     def _delay(self, min_sec: float = None, max_sec: float = None):
         min_sec = min_sec or self.delay_min
         max_sec = max_sec or self.delay_max
@@ -370,7 +349,7 @@ class PJEAutomacaoUnificada:
         )
         self.diagnosticos.append(diag)
         
-        status = "[OK]" if sucesso else "[ERRO]"
+        status = "✓" if sucesso else "✗"
         self._log(f"  [{status}] {etapa}: {mensagem}")
     
     # ==================== SESSÃO E AUTENTICAÇÃO ====================
@@ -382,17 +361,12 @@ class PJEAutomacaoUnificada:
         self.session.cookies.clear()
     
     def _verificar_sessao_ativa(self) -> bool:
-        """Verifica se ha uma sessao ativa no servidor."""
+        """Verifica se há uma sessão ativa no servidor."""
         try:
-            self._log_debug("Verificando sessao ativa no servidor...")
-            
-            # Usa headers da API incluindo X-pje-usuario-localizacao se disponivel
-            headers = self._get_api_headers()
-            
+            self._log_debug("Verificando sessão ativa no servidor...")
             resp = self.session.get(
                 f"{API_BASE}/usuario/currentUser",
-                timeout=self.timeout,
-                headers=headers
+                timeout=self.timeout
             )
             self._log_debug(f"Resposta currentUser: status={resp.status_code}")
             
@@ -402,7 +376,7 @@ class PJEAutomacaoUnificada:
                 self.usuario = Usuario.from_dict(data)
                 return True
         except Exception as e:
-            self._log_debug(f"Erro ao verificar sessao: {e}")
+            self._log_debug(f"Erro ao verificar sessão: {e}")
         return False
     
     def _restaurar_sessao(self) -> bool:
@@ -582,10 +556,6 @@ class PJEAutomacaoUnificada:
             
             if self._verificar_sessao_ativa():
                 self._log(f"Perfil selecionado: {self.usuario.nome}")
-                self._log(f"ID Usuario Localizacao: {self.usuario.id_usuario_localizacao}")
-                # Limpa cache de tarefas pois mudou o perfil
-                self.tarefas_cache.clear()
-                self.tarefas_favoritas_cache.clear()
                 self.session_manager.save_session(self.session)
                 return True
             
@@ -611,28 +581,21 @@ class PJEAutomacaoUnificada:
     # ==================== TAREFAS ====================
     
     def listar_tarefas(self) -> List[Tarefa]:
-        """Lista tarefas disponiveis para o usuario/perfil atual."""
+        """Lista todas as tarefas disponíveis."""
         if not self.ensure_logged_in():
             return []
         
         try:
-            headers = self._get_api_headers()
-            self._log_debug(f"Headers para tarefas: X-pje-usuario-localizacao={headers.get('X-pje-usuario-localizacao', 'NAO DEFINIDO')}")
-            
             resp = self.session.post(
                 f"{API_BASE}/painelUsuario/tarefas",
                 json={"numeroProcesso": "", "competencia": "", "etiquetas": []},
                 timeout=self.timeout,
-                headers=headers
+                headers={"Content-Type": "application/json"}
             )
             
             if resp.status_code == 200:
-                todas_tarefas = resp.json()
-                self._log_debug(f"API retornou {len(todas_tarefas)} tarefas no total")
-                # Filtra apenas tarefas com processos pendentes
-                tarefas_com_processos = [t for t in todas_tarefas if t.get('quantidadePendente', 0) > 0]
-                self.tarefas_cache = [Tarefa.from_dict(t) for t in tarefas_com_processos]
-                self._log(f"Encontradas {len(self.tarefas_cache)} tarefas com processos")
+                self.tarefas_cache = [Tarefa.from_dict(t) for t in resp.json()]
+                self._log(f"Encontradas {len(self.tarefas_cache)} tarefas")
                 return self.tarefas_cache
                 
         except Exception as e:
@@ -641,7 +604,7 @@ class PJEAutomacaoUnificada:
         return []
     
     def listar_tarefas_favoritas(self) -> List[Tarefa]:
-        """Lista tarefas favoritas do usuario."""
+        """Lista as tarefas favoritas."""
         if not self.ensure_logged_in():
             return []
         
@@ -650,14 +613,11 @@ class PJEAutomacaoUnificada:
                 f"{API_BASE}/painelUsuario/tarefasFavoritas",
                 json={"numeroProcesso": "", "competencia": "", "etiquetas": []},
                 timeout=self.timeout,
-                headers=self._get_api_headers()
+                headers={"Content-Type": "application/json"}
             )
             
             if resp.status_code == 200:
-                todas_tarefas = resp.json()
-                # Filtra apenas tarefas com processos pendentes
-                tarefas_com_processos = [t for t in todas_tarefas if t.get('quantidadePendente', 0) > 0]
-                self.tarefas_favoritas_cache = [Tarefa.from_dict(t, favorita=True) for t in tarefas_com_processos]
+                self.tarefas_favoritas_cache = [Tarefa.from_dict(t, favorita=True) for t in resp.json()]
                 self._log(f"Encontradas {len(self.tarefas_favoritas_cache)} tarefas favoritas")
                 return self.tarefas_favoritas_cache
                 
@@ -666,43 +626,25 @@ class PJEAutomacaoUnificada:
         
         return []
     
-    def buscar_tarefa_por_nome(self, nome: str, usar_favoritas: bool = False) -> Optional[Tarefa]:
-        """
-        Busca uma tarefa pelo nome.
-        
-        Args:
-            nome: Nome da tarefa
-            usar_favoritas: Se True, busca nas favoritas. Se False (padrão), busca nas gerais.
-        """
-        # Carrega as listas conforme necessário
-        if usar_favoritas:
-            if not self.tarefas_favoritas_cache:
-                self.listar_tarefas_favoritas()
-            lista_busca = self.tarefas_favoritas_cache
-            tipo_lista = "FAVORITAS"
-        else:
-            if not self.tarefas_cache:
-                self.listar_tarefas()
-            lista_busca = self.tarefas_cache
-            tipo_lista = "GERAIS"
-        
-        self._log(f"Buscando '{nome}' em tarefas {tipo_lista} ({len(lista_busca)} tarefas)")
+    def buscar_tarefa_por_nome(self, nome: str) -> Optional[Tarefa]:
+        """Busca uma tarefa pelo nome."""
+        if not self.tarefas_favoritas_cache:
+            self.listar_tarefas_favoritas()
+        if not self.tarefas_cache:
+            self.listar_tarefas()
         
         nome_lower = nome.lower()
         
         # Busca exata primeiro
-        for tarefa in lista_busca:
+        for tarefa in self.tarefas_favoritas_cache + self.tarefas_cache:
             if tarefa.nome.lower() == nome_lower:
-                self._log(f"[OK] Tarefa encontrada (match exato): {tarefa.nome} - {tarefa.quantidade_pendente} processos")
                 return tarefa
         
         # Busca parcial
-        for tarefa in lista_busca:
+        for tarefa in self.tarefas_favoritas_cache + self.tarefas_cache:
             if nome_lower in tarefa.nome.lower():
-                self._log(f"[OK] Tarefa encontrada (match parcial): {tarefa.nome} - {tarefa.quantidade_pendente} processos")
                 return tarefa
         
-        self._log(f"Tarefa '{nome}' não encontrada nas tarefas {tipo_lista}", "WARN")
         return None
     
     def listar_processos_tarefa(
@@ -734,7 +676,7 @@ class PJEAutomacaoUnificada:
                 endpoint,
                 json=payload,
                 timeout=self.timeout,
-                headers=self._get_api_headers()
+                headers={"Content-Type": "application/json"}
             )
             
             if resp.status_code == 200:
@@ -748,13 +690,13 @@ class PJEAutomacaoUnificada:
         
         return [], 0
     
-    def listar_todos_processos_tarefa(self, nome_tarefa: str, apenas_favoritas: bool = False) -> List[ProcessoTarefa]:
+    def listar_todos_processos_tarefa(self, nome_tarefa: str, favorita: bool = False) -> List[ProcessoTarefa]:
         """Lista TODOS os processos de uma tarefa (com paginação)."""
         todos = []
         page = 0
         
         while True:
-            processos, total = self.listar_processos_tarefa(nome_tarefa, page, 100, apenas_favoritas)
+            processos, total = self.listar_processos_tarefa(nome_tarefa, page, 100, favorita)
             if not processos:
                 break
             
@@ -891,70 +833,12 @@ class PJEAutomacaoUnificada:
         self._log("AVISO: Nenhum botão de download identificado!", "WARN")
         return None
     
-    def _extrair_url_download_direto(self, resposta_html: str) -> Optional[str]:
-        """
-        Extrai URL de download direto da resposta do POST.
-        Quando o processo tem poucas pecas, a URL do S3 vem direto na resposta.
-        """
-        # Padrao para URL do S3 com assinatura AWS
-        pattern = r'(https://[^"\'<>\s]*\.s3\.[^"\'<>\s]*\.amazonaws\.com/[^"\'<>\s]*-processo\.pdf[^"\'<>\s]*)'
-        
-        matches = re.findall(pattern, resposta_html)
-        
-        if matches:
-            # Pega a primeira URL e decodifica entidades HTML
-            url = matches[0].replace('&amp;', '&')
-            return url
-        
-        return None
-    
-    def _baixar_arquivo_direto(
-        self, 
-        url: str, 
-        numero_processo: str, 
-        diretorio: Path
-    ) -> Optional[Path]:
-        """
-        Baixa arquivo diretamente de uma URL presigned do S3.
-        """
-        try:
-            # Extrai nome do arquivo da URL
-            match = re.search(r'/([^/]+-processo\.pdf)', url)
-            if match:
-                nome_arquivo = match.group(1)
-            else:
-                nome_arquivo = f"{numero_processo}-processo.pdf"
-            
-            self._log(f"Download direto: {nome_arquivo}")
-            
-            resp = requests.get(url, stream=True, timeout=120)
-            
-            if resp.status_code == 200:
-                diretorio.mkdir(parents=True, exist_ok=True)
-                filepath = diretorio / nome_arquivo
-                
-                with open(filepath, "wb") as f:
-                    for chunk in resp.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                
-                tamanho = filepath.stat().st_size
-                self._log(f"Arquivo salvo: {filepath} ({tamanho} bytes)")
-                return filepath
-            else:
-                self._log(f"Erro HTTP {resp.status_code} ao baixar arquivo direto", "ERROR")
-                
-        except Exception as e:
-            self._log(f"Erro ao baixar arquivo direto: {e}", "ERROR")
-        
-        return None
-    
     def solicitar_download_diagnostico(
         self,
         id_processo: int,
         numero_processo: str,
         tipo_documento: str = "Selecione",
-        html_processo: str = None,
-        diretorio_download: Path = None
+        html_processo: str = None
     ) -> Tuple[bool, Dict]:
         """
         Solicita download com diagnósticos detalhados.
@@ -1097,116 +981,43 @@ class PJEAutomacaoUnificada:
                 )
                 return False, detalhes
             
+            # Verificar mensagem de sucesso
             resposta_texto = resp.text
             
             # Procurar mensagens na resposta
             mensagens = re.findall(r'rich-messages-label[^>]*>([^<]+)<', resposta_texto)
             detalhes["mensagens_resposta"] = mensagens
             
-            # Verificar tipo de download baseado na mensagem
-            # Caso 1: Download direto (poucas pecas) - URL vem na resposta
-            download_direto = "está sendo gerado" in resposta_texto.lower() and "aguarde" in resposta_texto.lower()
+            # Verificar se a solicitação foi aceita
+            sucesso_patterns = [
+                "documento solicitado será gerado",
+                "Área de download",
+                "download",
+                "será disponibilizado"
+            ]
             
-            # Caso 2: Vai para area de download (muitas pecas)
-            area_download = "será disponibilizado" in resposta_texto.lower() or "área de download" in resposta_texto.lower()
+            solicitacao_aceita = any(p.lower() in resposta_texto.lower() for p in sucesso_patterns)
             
-            if download_direto:
-                # Tentar extrair URL e baixar diretamente
-                url_direta = self._extrair_url_download_direto(resposta_texto)
-                
-                if url_direta and diretorio_download:
-                    arquivo = self._baixar_arquivo_direto(url_direta, numero_processo, diretorio_download)
-                    
-                    if arquivo:
-                        detalhes["tipo_download"] = "direto"
-                        detalhes["arquivo_baixado"] = str(arquivo)
-                        self._adicionar_diagnostico(
-                            numero_processo, id_processo, "solicitar",
-                            True, f"Download direto concluido: {arquivo.name}",
-                            {"tipo": "direto", "arquivo": str(arquivo)}
-                        )
-                        # Marca como ja processado para nao buscar na area de download
-                        self.downloads_solicitados.add(numero_processo)
-                        return True, detalhes
-                    else:
-                        # Falhou o download direto, mas a URL existia
-                        self._adicionar_diagnostico(
-                            numero_processo, id_processo, "solicitar",
-                            False, "URL de download direto encontrada mas falhou ao baixar",
-                            {"url": url_direta[:100]}
-                        )
-                        return False, detalhes
-                elif url_direta:
-                    # URL encontrada mas sem diretorio (sera tratado depois)
-                    detalhes["tipo_download"] = "direto"
-                    detalhes["url_direta"] = url_direta
-                    self._adicionar_diagnostico(
-                        numero_processo, id_processo, "solicitar",
-                        True, f"Download direto disponivel (URL extraida)",
-                        {"tipo": "direto"}
-                    )
-                    self.downloads_solicitados.add(numero_processo)
-                    return True, detalhes
-                else:
-                    # Mensagem de download direto mas sem URL
-                    self._adicionar_diagnostico(
-                        numero_processo, id_processo, "solicitar",
-                        False, "Mensagem de download direto mas URL nao encontrada",
-                        {"mensagens": mensagens}
-                    )
-                    return False, detalhes
-            
-            elif area_download:
-                # Download vai para area de download (processar depois)
-                detalhes["tipo_download"] = "area_download"
+            if solicitacao_aceita:
                 self._adicionar_diagnostico(
                     numero_processo, id_processo, "solicitar",
-                    True, f"Enviado para area de download",
-                    {"tipo": "area_download", "mensagens": mensagens}
+                    True, f"Solicitação aceita. Mensagens: {mensagens}",
+                    {"mensagens": mensagens}
                 )
                 self.downloads_solicitados.add(numero_processo)
                 return True, detalhes
-            
             else:
-                # Verificar outros padroes de sucesso
-                outros_sucesso = any(p.lower() in resposta_texto.lower() for p in ["download", "documento solicitado"])
-                
-                if outros_sucesso:
-                    # Tenta verificar se ha URL direta mesmo sem mensagem padrao
-                    url_direta = self._extrair_url_download_direto(resposta_texto)
-                    if url_direta and diretorio_download:
-                        arquivo = self._baixar_arquivo_direto(url_direta, numero_processo, diretorio_download)
-                        if arquivo:
-                            detalhes["tipo_download"] = "direto"
-                            detalhes["arquivo_baixado"] = str(arquivo)
-                            self._adicionar_diagnostico(
-                                numero_processo, id_processo, "solicitar",
-                                True, f"Download direto concluido: {arquivo.name}",
-                                {"tipo": "direto", "arquivo": str(arquivo)}
-                            )
-                            self.downloads_solicitados.add(numero_processo)
-                            return True, detalhes
-                    
-                    # Assume que foi para area de download
-                    detalhes["tipo_download"] = "area_download"
-                    self._adicionar_diagnostico(
-                        numero_processo, id_processo, "solicitar",
-                        True, f"Solicitacao aceita (padrao generico)",
-                        {"mensagens": mensagens}
-                    )
-                    self.downloads_solicitados.add(numero_processo)
-                    return True, detalhes
-                
-                # Verificar se ha erros
+                # Verificar se há erros
                 erro_patterns = ["erro", "falha", "não foi possível", "error"]
                 tem_erro = any(p.lower() in resposta_texto.lower() for p in erro_patterns)
                 
                 self._adicionar_diagnostico(
                     numero_processo, id_processo, "solicitar",
-                    False, f"Resposta inesperada. Erro detectado: {tem_erro}",
+                    False, f"Resposta inesperada. Erro detectado: {tem_erro}. Mensagens: {mensagens}",
                     {"resposta_parcial": resposta_texto[:1000], "mensagens": mensagens}
                 )
                 
+                # Salvar resposta para análise
                 self._save_json(
                     {"resposta": resposta_texto[:5000], "mensagens": mensagens},
                     f"debug_resposta_{numero_processo.replace('.', '_')}.json"
@@ -1217,7 +1028,7 @@ class PJEAutomacaoUnificada:
         except Exception as e:
             self._adicionar_diagnostico(
                 numero_processo, id_processo, "solicitar",
-                False, f"Excecao: {str(e)}"
+                False, f"Exceção: {str(e)}"
             )
             return False, detalhes
     
@@ -1266,11 +1077,8 @@ class PJEAutomacaoUnificada:
         
         return None
     
-    def baixar_arquivo(self, download: DownloadDisponivel, diretorio: Path = None) -> Optional[Path]:
-        """Baixa um arquivo para o diretório especificado."""
-        diretorio = diretorio or self.download_dir
-        diretorio.mkdir(parents=True, exist_ok=True)
-        
+    def baixar_arquivo(self, download: DownloadDisponivel) -> Optional[Path]:
+        """Baixa um arquivo."""
         self._log(f"Baixando: {download.nome_arquivo}")
         
         url = self.obter_url_download(download.hash_download)
@@ -1281,14 +1089,14 @@ class PJEAutomacaoUnificada:
             resp = requests.get(url, stream=True, timeout=120)
             
             if resp.status_code == 200:
-                filepath = diretorio / download.nome_arquivo
+                filepath = self.download_dir / download.nome_arquivo
                 
                 with open(filepath, "wb") as f:
                     for chunk in resp.iter_content(chunk_size=8192):
                         f.write(chunk)
                 
                 tamanho = filepath.stat().st_size
-                self._log(f"[OK] Salvo: {filepath} ({tamanho} bytes)")
+                self._log(f"✓ Salvo: {filepath} ({tamanho} bytes)")
                 return filepath
                 
         except Exception as e:
@@ -1340,7 +1148,7 @@ class PJEAutomacaoUnificada:
                 self._log(f"  Pendentes: {pendentes}")
             
             if len(encontrados) >= len(processos_solicitados):
-                self._log(f"[OK] Todos os downloads disponíveis!")
+                self._log(f"✓ Todos os downloads disponíveis!")
                 return downloads_encontrados
             
             if tempo_sem_novos >= 90 and encontrados:
@@ -1354,19 +1162,6 @@ class PJEAutomacaoUnificada:
     
     # ==================== FLUXO COMPLETO ====================
     
-    def _normalizar_nome_pasta(self, nome: str) -> str:
-        """Normaliza nome para usar como nome de pasta."""
-        # Remove/substitui caracteres inválidos para nomes de pasta
-        import unicodedata
-        # Normaliza acentos
-        nome_normalizado = unicodedata.normalize('NFKD', nome)
-        nome_sem_acento = ''.join(c for c in nome_normalizado if not unicodedata.combining(c))
-        # Substitui caracteres problemáticos
-        nome_limpo = re.sub(r'[<>:"/\\|?*]', '_', nome_sem_acento)
-        # Remove espaços extras
-        nome_limpo = re.sub(r'\s+', ' ', nome_limpo).strip()
-        return nome_limpo
-    
     def processar_tarefa_com_diagnostico(
         self,
         nome_tarefa: str,
@@ -1374,43 +1169,22 @@ class PJEAutomacaoUnificada:
         tipo_documento: str = "Selecione",
         limite_processos: int = None,
         aguardar_download: bool = True,
-        tempo_espera: int = 300,
-        usar_favoritas: bool = False
+        tempo_espera: int = 300
     ) -> Dict[str, Any]:
         """
         Processa uma tarefa com diagnósticos completos.
-        Downloads são salvos em ./downloads/{nome_tarefa}/
-        
-        Args:
-            nome_tarefa: Nome da tarefa a processar
-            nome_perfil: Nome do perfil a selecionar (opcional)
-            tipo_documento: Tipo de documento para filtrar
-            limite_processos: Limitar quantidade de processos (opcional)
-            aguardar_download: Se True, aguarda downloads ficarem prontos
-            tempo_espera: Tempo máximo de espera em segundos
-            usar_favoritas: Se True, busca em tarefas favoritas. Se False (padrão), busca em tarefas gerais.
         """
         # Limpar diagnósticos anteriores
         self.diagnosticos.clear()
         self.downloads_solicitados.clear()
         
-        # Criar diretório específico para a tarefa
-        nome_pasta = self._normalizar_nome_pasta(nome_tarefa)
-        diretorio_tarefa = self.download_dir / nome_pasta
-        diretorio_tarefa.mkdir(parents=True, exist_ok=True)
-        
-        self._log(f"Downloads serão salvos em: {diretorio_tarefa}")
-        
         relatorio = {
             "tarefa": nome_tarefa,
             "perfil": nome_perfil,
-            "usar_favoritas": usar_favoritas,
-            "diretorio_download": str(diretorio_tarefa),
             "data_inicio": datetime.now().isoformat(),
             "processos_encontrados": 0,
             "solicitacoes_sucesso": 0,
             "solicitacoes_falha": 0,
-            "downloads_diretos": 0,
             "downloads_concluidos": 0,
             "arquivos_baixados": [],
             "processos_sem_download": [],
@@ -1420,7 +1194,6 @@ class PJEAutomacaoUnificada:
         
         self._log("\n" + "=" * 70)
         self._log(f"PROCESSANDO TAREFA: {nome_tarefa}")
-        self._log(f"Fonte: {'TAREFAS FAVORITAS' if usar_favoritas else 'TAREFAS GERAIS'}")
         self._log("=" * 70)
         
         # Selecionar perfil
@@ -1430,16 +1203,16 @@ class PJEAutomacaoUnificada:
                 return relatorio
             self._delay()
         
-        # Buscar tarefa na lista correta (favoritas ou gerais)
-        tarefa = self.buscar_tarefa_por_nome(nome_tarefa, usar_favoritas=usar_favoritas)
+        # Buscar tarefa
+        tarefa = self.buscar_tarefa_por_nome(nome_tarefa)
         if not tarefa:
             relatorio["erros"].append(f"Tarefa não encontrada")
             return relatorio
         
         self._log(f"Tarefa: {tarefa.nome} ({tarefa.quantidade_pendente} processos)")
         
-        # Listar processos da tarefa
-        processos = self.listar_todos_processos_tarefa(tarefa.nome, apenas_favoritas=usar_favoritas)
+        # Listar processos
+        processos = self.listar_todos_processos_tarefa(tarefa.nome, tarefa.favorita)
         relatorio["processos_encontrados"] = len(processos)
         
         if not processos:
@@ -1453,57 +1226,41 @@ class PJEAutomacaoUnificada:
         # Processar cada processo
         processos_solicitados = []
         
-        # Rastreia arquivos baixados diretamente (processos com poucas pecas)
-        arquivos_download_direto = []
-        
         for i, proc in enumerate(processos, 1):
             self._log(f"\n[{i}/{len(processos)}] {proc.numero_processo}")
             
             sucesso, detalhes = self.solicitar_download_diagnostico(
                 proc.id_processo,
                 proc.numero_processo,
-                tipo_documento,
-                diretorio_download=diretorio_tarefa
+                tipo_documento
             )
             
             if sucesso:
                 relatorio["solicitacoes_sucesso"] += 1
-                
-                # Verifica se foi download direto (ja baixado)
-                if detalhes.get("tipo_download") == "direto" and detalhes.get("arquivo_baixado"):
-                    arquivos_download_direto.append(detalhes["arquivo_baixado"])
-                    self._log(f"  -> Download direto concluido")
-                else:
-                    # Vai para area de download
-                    processos_solicitados.append(proc.numero_processo)
+                processos_solicitados.append(proc.numero_processo)
             else:
                 relatorio["solicitacoes_falha"] += 1
                 relatorio["diagnosticos_falha"].append(detalhes)
             
             self._delay(2, 4)
         
-        # Adiciona arquivos de download direto ao relatorio
-        relatorio["arquivos_baixados"].extend(arquivos_download_direto)
-        relatorio["downloads_diretos"] = len(arquivos_download_direto)
-        relatorio["downloads_concluidos"] = len(arquivos_download_direto)
-        
-        # Aguardar e baixar da area de download (processos com muitas pecas)
+        # Aguardar e baixar
         if aguardar_download and processos_solicitados:
             self._log("\n" + "=" * 70)
-            self._log(f"AGUARDANDO {len(processos_solicitados)} DOWNLOADS NA AREA DE DOWNLOAD")
+            self._log("AGUARDANDO DOWNLOADS")
             self._log("=" * 70)
             
             downloads = self.aguardar_downloads(processos_solicitados, tempo_espera)
             
             self._log("\n" + "=" * 70)
-            self._log(f"BAIXANDO ARQUIVOS para: {diretorio_tarefa}")
+            self._log("BAIXANDO ARQUIVOS")
             self._log("=" * 70)
             
             processos_com_download = set()
             
             for download in downloads:
                 self._delay()
-                arquivo = self.baixar_arquivo(download, diretorio_tarefa)
+                arquivo = self.baixar_arquivo(download)
                 if arquivo:
                     relatorio["arquivos_baixados"].append(str(arquivo))
                     relatorio["downloads_concluidos"] += 1
@@ -1515,33 +1272,28 @@ class PJEAutomacaoUnificada:
         
         relatorio["data_fim"] = datetime.now().isoformat()
         
-        # Salvar relatório na pasta da tarefa
-        nome_arquivo = f"relatorio_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-        relatorio_path = diretorio_tarefa / nome_arquivo
-        with open(relatorio_path, "w", encoding="utf-8") as f:
-            json.dump(relatorio, f, ensure_ascii=False, indent=2)
-        self._log(f"Relatorio salvo: {relatorio_path}")
+        # Salvar relatório
+        nome_arquivo = f"relatorio_{nome_tarefa.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        self._save_json(relatorio, nome_arquivo)
         
         # Resumo final
         self._log("\n" + "=" * 70)
         self._log("RESUMO FINAL")
         self._log("=" * 70)
         self._log(f"Processos encontrados: {relatorio['processos_encontrados']}")
-        self._log(f"Solicitacoes com sucesso: {relatorio['solicitacoes_sucesso']}")
-        self._log(f"Solicitacoes com falha: {relatorio['solicitacoes_falha']}")
-        self._log(f"Downloads diretos (poucas pecas): {relatorio.get('downloads_diretos', 0)}")
-        self._log(f"Downloads da area de download: {relatorio['downloads_concluidos'] - relatorio.get('downloads_diretos', 0)}")
-        self._log(f"Total de arquivos baixados: {relatorio['downloads_concluidos']}")
+        self._log(f"Solicitações com sucesso: {relatorio['solicitacoes_sucesso']}")
+        self._log(f"Solicitações com falha: {relatorio['solicitacoes_falha']}")
+        self._log(f"Downloads concluídos: {relatorio['downloads_concluidos']}")
         
         if relatorio["processos_sem_download"]:
-            self._log(f"\nPROCESSOS SEM DOWNLOAD:", "WARN")
+            self._log(f"\n⚠️  PROCESSOS SEM DOWNLOAD:", "WARN")
             for proc in relatorio["processos_sem_download"]:
                 self._log(f"    - {proc}", "WARN")
         
         if relatorio["diagnosticos_falha"]:
-            self._log(f"\nDIAGNOSTICOS DE FALHA:", "WARN")
+            self._log(f"\n⚠️  DIAGNÓSTICOS DE FALHA:", "WARN")
             for diag in relatorio["diagnosticos_falha"]:
-                self._log(f"    - {diag.get('numero_processo')}: Ultima etapa com erro", "WARN")
+                self._log(f"    - {diag.get('numero_processo')}: Última etapa com erro", "WARN")
         
         return relatorio
     
@@ -1565,50 +1317,34 @@ def main():
     )
     
     try:
-        # SOLUCAO: Forca login novo para garantir sessao limpa
-        # A sessao restaurada pode ter perdido o contexto do perfil
-        pje.limpar_sessao()  # Limpa sessao antiga
-        
+        # Login
         if not pje.login():
             print("Falha no login!")
             return
         
-        # SEMPRE selecionar perfil antes de listar tarefas
-        nome_perfil = "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor"
-        
+        # Listar tarefas
         print("\n" + "=" * 60)
-        print("SELECIONANDO PERFIL")
+        print("TAREFAS DISPONÍVEIS")
         print("=" * 60)
         
-        if not pje.select_profile(nome_perfil):
-            print("Falha ao selecionar perfil!")
-            return
-        
-        # Listar tarefas (agora filtradas pelo perfil)
-        print("\n" + "=" * 60)
-        print("TAREFAS DISPONIVEIS")
-        print("=" * 60)
-        
-        print("\nTAREFAS FAVORITAS:")
         favoritas = pje.listar_tarefas_favoritas()
         for t in favoritas:
-            print(f"   [FAV] {t.nome}: {t.quantidade_pendente}")
+            print(f"  ⭐ {t.nome}: {t.quantidade_pendente}")
         
-        print("\nTAREFAS GERAIS:")
         tarefas = pje.listar_tarefas()
         for t in tarefas:
-            print(f"   - {t.nome}: {t.quantidade_pendente}")
+            print(f"  - {t.nome}: {t.quantidade_pendente}")
         
-        # Processar tarefa com diagnosticos
+        # Processar tarefa com diagnósticos
         relatorio = pje.processar_tarefa_com_diagnostico(
-            nome_tarefa="Minutar sentença extintiva",
-            nome_perfil=None,  # Perfil ja selecionado
+            nome_tarefa="Minutar decisão urgente",
+            nome_perfil="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor",
             aguardar_download=True,
             tempo_espera=300,
-            usar_favoritas=True,
+            # limite_processos=5  # Descomente para testar com poucos processos
         )
         
-        print(f"\nRelatorio salvo em: {relatorio.get('diretorio_download')}")
+        print(f"\nRelatório salvo em: .logs/")
         
     finally:
         pje.close()
