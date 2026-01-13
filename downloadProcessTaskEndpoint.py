@@ -1601,11 +1601,11 @@ def main():
         
         # Processar tarefa com diagnosticos
         relatorio = pje.processar_tarefa_com_diagnostico(
-            nome_tarefa="Minutar sentença extintiva",
-            nome_perfil=None,  # Perfil ja selecionado
+            nome_tarefa="(Nêmesis) Homologar desistência - ANALISAR",
+            nome_perfil="V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Assessoria / Assessor",
             aguardar_download=True,
             tempo_espera=300,
-            usar_favoritas=True,
+            usar_favoritas=False,
         )
         
         print(f"\nRelatorio salvo em: {relatorio.get('diretorio_download')}")

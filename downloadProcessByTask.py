@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
-Download de processos por ETIQUETA.
+Download de processos por TAREFA.
 
 Uso:
-    python downloadProcessByTag.py --etiqueta "Felipe" --perfil "Assessoria"
-    python downloadProcessByTag.py -e "Felipe" -p "Assessoria"
-    python downloadProcessByTag.py --help
+    python downloadProcessByTask.py --tarefa "Minutar sentença" --perfil "Assessoria"
+    python downloadProcessByTask.py -t "Minutar sentença" -p "Assessoria" --favoritas
+    python downloadProcessByTask.py --help
 """
 
 import argparse
@@ -14,23 +14,25 @@ from pje_lib import PJEClient
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download de processos por ETIQUETA do PJE",
+        description="Download de processos por TAREFA do PJE",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Exemplos:
-  python downloadProcessByTag.py -e "Felipe"
-  python downloadProcessByTag.py -e "Felipe" -p "Assessoria"
-  python downloadProcessByTag.py -e "Felipe" --limite 10
-  python downloadProcessByTag.py --listar-etiquetas
-  python downloadProcessByTag.py --buscar-etiqueta "Fel"
+  python downloadProcessByTask.py -t "Minutar sentença"
+  python downloadProcessByTask.py -t "Minutar sentença" -p "Assessoria"
+  python downloadProcessByTask.py -t "Minutar sentença" --favoritas
+  python downloadProcessByTask.py -t "Minutar sentença" --limite 5
+  python downloadProcessByTask.py --listar-tarefas
+  python downloadProcessByTask.py --listar-perfis
         """
     )
     
     # Argumentos principais
-    parser.add_argument("-e", "--etiqueta", type=str, help="Nome da etiqueta a processar")
+    parser.add_argument("-t", "--tarefa", type=str, help="Nome da tarefa a processar")
     parser.add_argument("-p", "--perfil", type=str, help="Nome do perfil a selecionar")
     
     # Opções
+    parser.add_argument("--favoritas", action="store_true", help="Buscar em tarefas favoritas")
     parser.add_argument("--limite", type=int, help="Limitar quantidade de processos")
     parser.add_argument("--tipo-documento", type=str, default="Selecione", 
                         help="Tipo de documento (default: Selecione)")
@@ -42,8 +44,7 @@ Exemplos:
                         help="Diretório para downloads (default: ./downloads)")
     
     # Comandos de listagem
-    parser.add_argument("--listar-etiquetas", action="store_true", help="Listar etiquetas disponíveis")
-    parser.add_argument("--buscar-etiqueta", type=str, help="Buscar etiquetas por nome")
+    parser.add_argument("--listar-tarefas", action="store_true", help="Listar tarefas disponíveis")
     parser.add_argument("--listar-perfis", action="store_true", help="Listar perfis disponíveis")
     
     # Debug
@@ -79,24 +80,22 @@ Exemplos:
                 print(f"  [{p.index}] {p.nome_completo}")
             return
         
-        # Listar etiquetas
-        if args.listar_etiquetas:
-            print("\n=== ETIQUETAS ===")
-            for e in pje.buscar_etiquetas():
-                print(f"  - {e.nome} (ID: {e.id})")
+        # Listar tarefas
+        if args.listar_tarefas:
+            print("\n=== TAREFAS FAVORITAS ===")
+            for t in pje.listar_tarefas_favoritas():
+                print(f"  [FAV] {t.nome}: {t.quantidade_pendente} processos")
+            
+            print("\n=== TAREFAS GERAIS ===")
+            for t in pje.listar_tarefas():
+                print(f"  - {t.nome}: {t.quantidade_pendente} processos")
             return
         
-        # Buscar etiquetas
-        if args.buscar_etiqueta:
-            print(f"\n=== ETIQUETAS com '{args.buscar_etiqueta}' ===")
-            for e in pje.buscar_etiquetas(args.buscar_etiqueta):
-                print(f"  - {e.nome} (ID: {e.id})")
-            return
-        
-        # Processar etiqueta
-        if args.etiqueta:
-            relatorio = pje.processar_etiqueta(
-                nome_etiqueta=args.etiqueta,
+        # Processar tarefa
+        if args.tarefa:
+            relatorio = pje.processar_tarefa(
+                nome_tarefa=args.tarefa,
+                usar_favoritas=args.favoritas,
                 limite=args.limite,
                 tipo_documento=args.tipo_documento,
                 aguardar_download=not args.sem_download,
