@@ -76,7 +76,9 @@ class ProcessoTarefa:
     polo_ativo: str = ""
     polo_passivo: str = ""
     classe_judicial: str = ""
-    
+    data_chegada: int = 0      # epoch ms da chegada na tarefa
+    ultimo_movimento: int = 0  # epoch ms do último movimento (muda mesmo sem trocar de tarefa)
+
     @classmethod
     def from_dict(cls, data: dict) -> "ProcessoTarefa":
         return cls(
@@ -85,8 +87,17 @@ class ProcessoTarefa:
             id_task_instance=data.get("idTaskInstance", 0),
             polo_ativo=data.get("poloAtivo", ""),
             polo_passivo=data.get("poloPassivo", ""),
-            classe_judicial=data.get("classeJudicial", "")
+            classe_judicial=data.get("classeJudicial", ""),
+            data_chegada=data.get("dataChegada", 0) or 0,
+            ultimo_movimento=(data.get("ultimoMovimento", 0)
+                              or data.get("dataUltimoMovimento", 0) or 0)
         )
+
+    @property
+    def data_referencia(self) -> int:
+        """Data para filtro de atividade recente: último movimento é a fonte
+        correta (juntada não tira o processo da tarefa); chegada é fallback."""
+        return self.ultimo_movimento or self.data_chegada
 
 
 @dataclass

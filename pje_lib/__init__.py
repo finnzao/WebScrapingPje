@@ -34,16 +34,22 @@ from .config import (
     TIPO_DOCUMENTO_VALUES,
     DEFAULT_TIMEOUT, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX,
 )
+from .exceptions import (
+    PJEError, SessaoExpirada, ErroCaptura,
+    ProcessoNaoEncontrado, AcessoNegado, PdfInvalido, RespostaDesconhecida,
+)
 from .models import (
     Usuario, Perfil, Tarefa, ProcessoTarefa,
     Etiqueta, Processo, DownloadDisponivel,
     DiagnosticoDownload,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __all__ = [
     "PJEClient",
     "BASE_URL", "SSO_URL", "API_BASE", "TIPO_DOCUMENTO_VALUES",
+    "PJEError", "SessaoExpirada", "ErroCaptura",
+    "ProcessoNaoEncontrado", "AcessoNegado", "PdfInvalido", "RespostaDesconhecida",
     "Usuario", "Perfil", "Tarefa", "ProcessoTarefa",
     "Etiqueta", "Processo", "DownloadDisponivel", "DiagnosticoDownload",
 ]

@@ -3,19 +3,43 @@ Cliente HTTP base para comunicação com o PJE.
 """
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from typing import Dict, Optional
 
 from ..config import API_BASE, DEFAULT_HEADERS, DEFAULT_TIMEOUT
 from ..models import Usuario
 
 
+def sessao_caiu(resp: requests.Response) -> bool:
+    """True se a resposta final aterrissou na tela de login (sessão expirou).
+
+    O PJE responde HTTP 200 com o HTML do Keycloak nesses casos, então
+    status_code não serve — a URL final é o sinal confiável.
+    """
+    return "sso.cloud.pje.jus.br" in resp.url or "/login.seam" in resp.url
+
+
 class PJEHttpClient:
     """Cliente HTTP configurado para o PJE."""
-    
+
     def __init__(self, timeout: int = DEFAULT_TIMEOUT):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(DEFAULT_HEADERS)
+        # Backoff exponencial para instabilidade transiente (429 comprovado
+        # empiricamente na infra PJe/CNJ). Respeita Retry-After.
+        # POST idempotente aqui: re-solicitar um download só regenera o mesmo PDF.
+        retry = Retry(
+            total=5,
+            backoff_factor=2,  # 2s, 4s, 8s, 16s, 32s
+            status_forcelist=[429, 500, 502, 503, 504],
+            allowed_methods=["GET", "POST"],
+            respect_retry_after_header=True,
+        )
+        adapter = HTTPAdapter(max_retries=retry)
+        self.session.mount("https://", adapter)
+        self.session.mount("http://", adapter)
         self.usuario: Optional[Usuario] = None
     
     def get_api_headers(self) -> Dict[str, str]:

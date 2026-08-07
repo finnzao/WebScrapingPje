@@ -7,7 +7,8 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 from .config import DEFAULT_TIMEOUT, DEFAULT_DELAY_MIN, DEFAULT_DELAY_MAX
-from .core import SessionManager, PJEHttpClient
+from .core import SessionManager, PJEHttpClient, sessao_caiu
+from .exceptions import SessaoExpirada, ErroCaptura, ProcessoNaoEncontrado
 from .services import AuthService, TaskService, TagService, DownloadService
 from .models import (
     Usuario, Perfil, Tarefa, ProcessoTarefa, 
@@ -83,8 +84,9 @@ class PJEClient:
     
     # ==================== AUTENTICAÇÃO ====================
     
-    def login(self, username: str = None, password: str = None, force: bool = False) -> bool:
-        return self._auth.login(username, password, force)
+    def login(self, username: str = None, password: str = None, force: bool = False,
+              otp: str = None) -> bool:
+        return self._auth.login(username, password, force, otp=otp)
     
     def limpar_sessao(self):
         self._auth.limpar_sessao()
@@ -142,12 +144,82 @@ class PJEClient:
     
     # ==================== DOWNLOAD ====================
     
-    def solicitar_download(self, id_processo: int, numero_processo: str, 
+    def solicitar_download(self, id_processo: int, numero_processo: str,
                           tipo: str = "Selecione", diretorio: Path = None) -> bool:
         sucesso, _ = self._downloads.solicitar_download(
             id_processo, numero_processo, tipo, diretorio_download=diretorio
         )
         return sucesso
+
+    def _com_relogin(self, fn, *args, **kwargs):
+        """Executa fn; se a sessão tiver caído, religa uma vez e repete."""
+        try:
+            return fn(*args, **kwargs)
+        except SessaoExpirada:
+            self.logger.warning("Sessão expirou no meio da execução. Religando...")
+            # force=False preserva o cookie do Keycloak: se a sessão SSO ainda
+            # valer, religa silenciosamente sem pedir senha/OTP de novo
+            if not self._auth.login(force=False):
+                raise
+            return fn(*args, **kwargs)
+
+    def capturar_documentos(
+        self,
+        numero_processo: str,
+        tipo_documento: str = "Peticao",
+        data_inicio: str = "",
+        data_fim: str = "",
+        diretorio: Path = None,
+        id_processo: int = None,
+    ) -> Dict[str, Any]:
+        """Captura documentos de um processo, filtrados por tipo e janela de
+        datas (dd/mm/aaaa).
+
+        Se id_processo for conhecido (ex.: veio da listagem do painel), usa
+        direto; senão resolve o NPU para o id interno via consulta.
+
+        Retorna detalhes com 'sucesso', 'erro_tipo' (quando falha),
+        'tipo_download' e 'arquivo_baixado' (quando download direto).
+        """
+        if not self.ensure_logged_in():
+            return {"sucesso": False, "erro_tipo": "login", "numero_processo": numero_processo}
+
+        if not id_processo:
+            id_processo = self._com_relogin(self._localizar_id_painel, numero_processo)
+        return self._com_relogin(
+            self._downloads.capturar_por_timeline,
+            id_processo, numero_processo, tipo_documento,
+            data_inicio=data_inicio, data_fim=data_fim,
+            diretorio=diretorio or self.download_dir,
+        )
+
+    def _localizar_id_painel(self, numero_processo: str) -> int:
+        """Resolve NPU -> idProcesso pelas tarefas do perfil atual.
+
+        O corpo de painelUsuario/tarefas aceita numeroProcesso como filtro:
+        devolve as tarefas onde o processo está; a listagem da tarefa com o
+        mesmo filtro entrega o idProcesso. Só alcança processos no painel do
+        perfil logado — para NPUs fora dele (ex.: só no Datajud), falha com
+        'nao_encontrado' e o processo fica reprocessável sob outro perfil.
+        """
+        resp = self._http.api_post(
+            "painelUsuario/tarefas",
+            {"numeroProcesso": numero_processo, "competencia": "", "etiquetas": []})
+        if sessao_caiu(resp):
+            raise SessaoExpirada(f"sessão caiu ao localizar {numero_processo}")
+        if resp.status_code != 200:
+            raise ProcessoNaoEncontrado(
+                f"HTTP {resp.status_code} ao buscar tarefas de {numero_processo}",
+                erro_tipo="http_erro")
+        tarefas = [t for t in resp.json() if t.get("quantidadePendente", 0) > 0]
+        for t in tarefas:
+            procs, _ = self._tasks.listar_processos_tarefa(
+                t["nome"], numero_processo=numero_processo)
+            for p in procs:
+                if p.numero_processo == numero_processo:
+                    return p.id_processo
+        raise ProcessoNaoEncontrado(
+            f"{numero_processo} não está no painel do perfil atual")
     
     def listar_downloads(self) -> List[DownloadDisponivel]:
         return self._downloads.listar_downloads_disponiveis()
@@ -201,12 +273,18 @@ class PJEClient:
         
         for i, proc in enumerate(processos, 1):
             self.logger.info(f"[{i}/{len(processos)}] {proc.numero_processo}")
-            
-            sucesso, detalhes = self._downloads.solicitar_download(
-                proc.id_processo, proc.numero_processo, tipo_documento,
-                diretorio_download=diretorio
-            )
-            
+
+            # Erro de um processo não contamina os demais
+            try:
+                sucesso, detalhes = self._com_relogin(
+                    self._downloads.solicitar_download,
+                    proc.id_processo, proc.numero_processo, tipo_documento,
+                    diretorio_download=diretorio
+                )
+            except Exception as e:
+                sucesso, detalhes = False, {"erro_tipo": type(e).__name__, "erro": str(e)}
+                self.logger.error(f"Falha em {proc.numero_processo}: {e}")
+
             if sucesso:
                 relatorio["sucesso"] += 1
                 if detalhes.get("arquivo_baixado"):
@@ -215,27 +293,34 @@ class PJEClient:
                     processos_solicitados.append(proc.numero_processo)
             else:
                 relatorio["falha"] += 1
-            
+                relatorio["erros"].append(
+                    {"numero_processo": proc.numero_processo,
+                     "erro_tipo": detalhes.get("erro_tipo", "desconhecido")})
+
             delay(2, 4)
-        
+
         if aguardar_download and processos_solicitados:
             downloads = self._downloads.aguardar_downloads(processos_solicitados, tempo_espera)
             for dl in downloads:
                 delay()
-                arquivo = self._downloads.baixar_arquivo(dl, diretorio)
+                try:
+                    arquivo = self._downloads.baixar_arquivo(dl, diretorio)
+                except Exception as e:
+                    self.logger.error(f"Falha ao baixar {dl.nome_arquivo}: {e}")
+                    arquivo = None
                 if arquivo:
                     relatorio["arquivos"].append(str(arquivo))
-        
+
         relatorio["data_fim"] = datetime.now().isoformat()
         save_json(relatorio, diretorio / f"relatorio_{timestamp_str()}.json")
-        
+
         self.logger.section("RESUMO")
         self.logger.info(f"Processos: {relatorio['processos']}")
         self.logger.info(f"Sucesso: {relatorio['sucesso']}")
         self.logger.info(f"Arquivos: {len(relatorio['arquivos'])}")
-        
+
         return relatorio
-    
+
     def processar_etiqueta(
         self,
         nome_etiqueta: str,
@@ -279,12 +364,18 @@ class PJEClient:
         
         for i, proc in enumerate(processos, 1):
             self.logger.info(f"[{i}/{len(processos)}] {proc.numero_processo}")
-            
-            sucesso, detalhes = self._downloads.solicitar_download(
-                proc.id_processo, proc.numero_processo, tipo_documento,
-                diretorio_download=diretorio
-            )
-            
+
+            # Erro de um processo não contamina os demais
+            try:
+                sucesso, detalhes = self._com_relogin(
+                    self._downloads.solicitar_download,
+                    proc.id_processo, proc.numero_processo, tipo_documento,
+                    diretorio_download=diretorio
+                )
+            except Exception as e:
+                sucesso, detalhes = False, {"erro_tipo": type(e).__name__, "erro": str(e)}
+                self.logger.error(f"Falha em {proc.numero_processo}: {e}")
+
             if sucesso:
                 relatorio["sucesso"] += 1
                 if detalhes.get("arquivo_baixado"):
@@ -293,14 +384,21 @@ class PJEClient:
                     processos_solicitados.append(proc.numero_processo)
             else:
                 relatorio["falha"] += 1
-            
+                relatorio["erros"].append(
+                    {"numero_processo": proc.numero_processo,
+                     "erro_tipo": detalhes.get("erro_tipo", "desconhecido")})
+
             delay(2, 4)
-        
+
         if aguardar_download and processos_solicitados:
             downloads = self._downloads.aguardar_downloads(processos_solicitados, tempo_espera)
             for dl in downloads:
                 delay()
-                arquivo = self._downloads.baixar_arquivo(dl, diretorio)
+                try:
+                    arquivo = self._downloads.baixar_arquivo(dl, diretorio)
+                except Exception as e:
+                    self.logger.error(f"Falha ao baixar {dl.nome_arquivo}: {e}")
+                    arquivo = None
                 if arquivo:
                     relatorio["arquivos"].append(str(arquivo))
         

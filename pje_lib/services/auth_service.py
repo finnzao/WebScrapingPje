@@ -4,6 +4,7 @@ Serviço de autenticação do PJE.
 
 import os
 import re
+import sys
 from typing import Optional, List
 
 from ..config import BASE_URL, SSO_URL, API_BASE
@@ -76,8 +77,35 @@ class AuthService:
         
         return username, password
     
-    def login(self, username: str = None, password: str = None, force: bool = False) -> bool:
-        """Realiza login no PJE via SSO."""
+    def _extrair_action(self, html: str) -> Optional[str]:
+        """Extrai a URL de action do formulário Keycloak (login ou OTP)."""
+        match = re.search(r'action="([^"]*)"', html)
+        if not match:
+            return None
+        url = match.group(1).replace("&amp;", "&")
+        return url if url.startswith("http") else f"{SSO_URL}{url}"
+
+    def _resolver_otp(self, otp: str = None) -> Optional[str]:
+        """Obtém o código OTP: parâmetro > env PJE_OTP > prompt interativo."""
+        otp = otp or os.getenv("PJE_OTP")
+        if otp:
+            return otp.strip()
+        if sys.stdin.isatty():
+            try:
+                return input("Código OTP do PJE (autenticador): ").strip() or None
+            except EOFError:
+                return None
+        return None
+
+    def login(self, username: str = None, password: str = None, force: bool = False,
+              otp: str = None) -> bool:
+        """Realiza login no PJE via SSO.
+
+        Se o SSO exigir segundo fator (OTP), o código vem do parâmetro `otp`,
+        da variável de ambiente PJE_OTP, ou de prompt interativo. A sessão é
+        persistida após o login — execuções seguintes reutilizam os cookies e
+        não pedem OTP de novo enquanto a sessão valer.
+        """
         if not username or not password:
             env_user = os.getenv("PJE_USER") or os.getenv("USER")
             env_pass = os.getenv("PJE_PASSWORD") or os.getenv("PASSWORD")
@@ -101,33 +129,38 @@ class AuthService:
         else:
             self.session_manager.clear_session()
         
-        self.logger.info(f"Iniciando login: {username}...")
+        # CPF é dado pessoal — nunca em claro no log (o log vai para arquivo)
+        self.logger.info(f"Iniciando login: {username[:3]}***{username[-2:]}")
         
         try:
-            # Limpa sessão antiga
-            self.client.session.cookies.clear()
-            
+            if force:
+                # Só limpa cookies em login forçado: preservar o cookie do
+                # Keycloak permite re-autenticação silenciosa (sem senha/OTP)
+                # quando a sessão do app cai no meio de um lote
+                self.client.session.cookies.clear()
+
             resp = self.client.session.get(
                 f"{BASE_URL}/pje/login.seam",
                 allow_redirects=True,
                 timeout=self.client.timeout
             )
-            
+
             if "sso.cloud.pje.jus.br" not in resp.url:
+                # SSO ainda tinha sessão válida e devolveu direto para o app
+                if self.verificar_sessao_ativa():
+                    self.logger.success(f"Re-autenticação silenciosa via SSO: {self.usuario.nome}")
+                    self.session_manager.save_session(self.client.session)
+                    return True
                 self.logger.error("Não redirecionou para SSO")
                 return False
             
-            action_match = re.search(r'action="([^"]*)"', resp.text)
-            if not action_match:
+            auth_url = self._extrair_action(resp.text)
+            if not auth_url:
                 self.logger.error("URL de autenticação não encontrada")
                 return False
-            
-            auth_url = action_match.group(1).replace("&amp;", "&")
-            if not auth_url.startswith("http"):
-                auth_url = f"{SSO_URL}{auth_url}"
-            
+
             delay(0.5, 1)
-            
+
             resp = self.client.session.post(
                 auth_url,
                 data={
@@ -143,9 +176,38 @@ class AuthService:
                     "Referer": auth_url,
                 }
             )
-            
+
+            # Segundo fator: o SSO devolve o formulário de OTP em vez de
+            # redirecionar para o app (POST otp=...&login=Validar, cf. HAR)
+            if "sso.cloud.pje.jus.br" in resp.url and 'name="otp"' in resp.text:
+                codigo = self._resolver_otp(otp)
+                if not codigo:
+                    self.logger.error(
+                        "SSO exige OTP e nenhum código disponível "
+                        "(passe otp=, defina PJE_OTP ou rode em terminal interativo)")
+                    return False
+                otp_url = self._extrair_action(resp.text)
+                if not otp_url:
+                    self.logger.error("Formulário de OTP sem action reconhecível")
+                    return False
+                delay(0.5, 1)
+                resp = self.client.session.post(
+                    otp_url,
+                    data={"otp": codigo, "login": "Validar"},
+                    allow_redirects=True,
+                    timeout=self.client.timeout,
+                    headers={
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Origin": SSO_URL,
+                        "Referer": otp_url,
+                    }
+                )
+                if 'name="otp"' in resp.text:
+                    self.logger.error("OTP recusado pelo SSO (código inválido/expirado)")
+                    return False
+
             delay(0.5, 1)
-            
+
             if self.verificar_sessao_ativa():
                 self.logger.success(f"Login OK: {self.usuario.nome}")
                 self.session_manager.save_session(self.client.session)

@@ -102,17 +102,18 @@ class TaskService:
         return None
     
     def listar_processos_tarefa(
-        self, nome_tarefa: str, page: int = 0, 
-        max_results: int = 100, apenas_favoritas: bool = False
+        self, nome_tarefa: str, page: int = 0,
+        max_results: int = 100, apenas_favoritas: bool = False,
+        numero_processo: str = ""
     ) -> Tuple[List[ProcessoTarefa], int]:
-        """Lista processos de uma tarefa."""
+        """Lista processos de uma tarefa (numero_processo filtra por NPU)."""
         try:
             endpoint = (
                 f"painelUsuario/recuperarProcessosTarefaPendenteComCriterios/"
                 f"{quote(nome_tarefa)}/{str(apenas_favoritas).lower()}"
             )
             resp = self.client.api_post(endpoint, {
-                "numeroProcesso": "", "classe": None, "tags": [],
+                "numeroProcesso": numero_processo, "classe": None, "tags": [],
                 "page": page, "maxResults": max_results, "competencia": ""
             })
             if resp.status_code == 200:
